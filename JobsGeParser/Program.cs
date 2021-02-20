@@ -12,12 +12,7 @@ namespace JobsGeParser
         {
             var jobsClient = new JobsGeClient();
             var jobs = await jobsClient.GetJobApplicationsAsync();
-            var repo = new Repository();
-
-            foreach (var item in jobs)
-            {
-                await repo.Insert(item);
-            }
+            Console.WriteLine("Got all jobs.");
 
             Console.WriteLine("Press any key to continue...");
             Console.ReadKey();

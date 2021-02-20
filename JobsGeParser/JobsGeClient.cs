@@ -43,11 +43,8 @@ namespace JobsGeParser
         public async Task<IEnumerable<JobApplication>> GetJobApplicationsAsync()
         {
             var content = await GetContent();
-
             var document = await LoadDocument(content);
-
             var table = await ParseHtmlDocument(document);
-
             var applications = await ReadJobsTable(table);
 
             return await Task.FromResult(applications);
@@ -72,8 +69,10 @@ namespace JobsGeParser
                     Published = row.ElementAt(2).GetDate(),
                     EndDate = row.ElementAt(3).GetDate(),
                 };
+                
                 Console.WriteLine($"{i++} Got {application.Id} Description");
-                await Task.Delay(1000);
+
+                await Task.Delay(500);
                 application.Description = await ReadDescription(application);
 
                 var repo = new Repository();

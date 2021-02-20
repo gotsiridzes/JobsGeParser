@@ -58,16 +58,18 @@ namespace JobsGeParser
 
                     await connection.OpenAsync();
 
-                    using (var transaction = await connection.BeginTransactionAsync())
+                    using (var transaction = await connection.BeginTransactionAsync() as SqlTransaction)
                     {
                         try
                         {
+                            command.Transaction = transaction;
                             await command.ExecuteNonQueryAsync();
                             await transaction.CommitAsync();
                         }
-                        catch(Exception)
+                        catch(Exception ex)
                         {
                             await transaction.RollbackAsync();
+                            throw;
                         }
                     }
 
