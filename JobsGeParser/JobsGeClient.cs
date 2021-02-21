@@ -12,10 +12,13 @@ namespace JobsGeParser
     {
 
         private static HttpClient _client;
+        private Repository _repository;
+        private List<int> _jobs;
 
         public JobsGeClient()
         {
             InitializeHttpClient();
+            _repository = new Repository();
         }
 
         private static void InitializeHttpClient()
@@ -69,14 +72,17 @@ namespace JobsGeParser
                     Published = row.ElementAt(2).GetDate(),
                     EndDate = row.ElementAt(3).GetDate(),
                 };
+                Console.ForegroundColor = ConsoleColor.White;
                 
                 Console.WriteLine($"{i++} Got {application.Id} Description");
 
-                await Task.Delay(500);
+                await Task.Delay(400);
                 application.Description = await ReadDescription(application);
 
-                var repo = new Repository();
-                await repo.Insert(application);
+                await _repository.Insert(application);
+                Console.WriteLine("\tChecking for active status...");
+                await _repository.CheckJobs(application);
+
                 jobs.Add(application);
             }
 
@@ -91,9 +97,6 @@ namespace JobsGeParser
             var document = new HtmlDocument();
             document.LoadHtml(content);
             return document.DocumentNode.SelectSingleNode("//table[@class='ad']").Descendants("tr").ElementAt(3).InnerText.Trim();
-            
-
-
         }
 
         private async Task<IEnumerable<IEnumerable<string>>> ParseHtmlDocument(HtmlDocument document)

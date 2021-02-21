@@ -46,6 +46,7 @@ namespace JobsGeParser
                 {
                     command.CommandText = "[Job].[InsertJob]";
                     command.CommandType = System.Data.CommandType.StoredProcedure;
+                    command.CommandTimeout = 0;
 
                     command.Parameters.AddWithValue("@Id", entity.Id);
                     command.Parameters.AddWithValue("@Link", entity.Link);
@@ -55,8 +56,7 @@ namespace JobsGeParser
                     command.Parameters.AddWithValue("Published", entity.Published);
                     command.Parameters.AddWithValue("@EndDate", entity.EndDate);
                     command.Parameters.AddWithValue("@Description", entity.Description);
-
-                    await connection.OpenAsync();
+                    await TryOpenConnectionAsync(connection);
 
                     using (var transaction = await connection.BeginTransactionAsync() as SqlTransaction)
                     {
@@ -66,14 +66,30 @@ namespace JobsGeParser
                             await command.ExecuteNonQueryAsync();
                             await transaction.CommitAsync();
                         }
-                        catch(Exception ex)
+                        catch (Exception ex)
                         {
                             await transaction.RollbackAsync();
                             throw;
                         }
                     }
-
                 }
+            }
+        }
+
+        private static async Task TryOpenConnectionAsync(SqlConnection connection)
+        {
+            try
+            {
+                await connection.OpenAsync();
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("Connected!!!");
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("Can not connect to server, trying again ...\n\t{0}", ex.Message);
+                await Task.Delay(5000);
+                await TryOpenConnectionAsync(connection);
             }
         }
 
@@ -87,6 +103,34 @@ namespace JobsGeParser
             return new SqlConnection(Constants.ConnectionString);
         }
 
+        public async Task CheckJobs(JobApplication job)
+        {
+            using (var connection = GetConnection())
+            {
+                using (var command = connection.CreateCommand())
+                {
+                    command.CommandText = "[Job].[CheckJob]";
+                    command.CommandType = System.Data.CommandType.StoredProcedure;
 
+                    command.Parameters.AddWithValue("@JobId", job.Id);
+                    await connection.OpenAsync();
+
+                    using (var transaction = await connection.BeginTransactionAsync() as SqlTransaction)
+                    {
+                        try
+                        {
+                            command.Transaction = transaction;
+                            await command.ExecuteNonQueryAsync();
+                            await transaction.CommitAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            await transaction.RollbackAsync();
+                            throw;
+                        }
+                    }
+                }
+            }
+        }
     }
 }

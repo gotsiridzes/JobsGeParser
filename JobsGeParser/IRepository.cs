@@ -12,5 +12,6 @@ namespace JobsGeParser
         Task Update(T entity);
         Task<T> Get(int id);
         Task<IEnumerable<T>> GetAll();
+        Task CheckJobs(JobApplication job);
     }
 }

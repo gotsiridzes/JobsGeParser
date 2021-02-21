@@ -11,6 +11,7 @@ namespace JobsGeParser
         static async System.Threading.Tasks.Task Main(string[] args)
         {
             var jobsClient = new JobsGeClient();
+            Console.ForegroundColor = ConsoleColor.White;
             var jobs = await jobsClient.GetJobApplicationsAsync();
             Console.WriteLine("Got all jobs.");
 
