@@ -1,0 +1,13 @@
+@Api_HostAddress = http://localhost:50423
+
+GET {{Api_HostAddress}}/api/jobs
+Accept: application/json
+
+###
+
+POST {{Api_HostAddress}}/api/jobs/retrieve
+Accept: application/json
+Content-Type: application/json
+
+###
+  

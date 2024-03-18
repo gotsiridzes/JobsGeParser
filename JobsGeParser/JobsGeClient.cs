@@ -1,120 +1,68 @@
-﻿using HtmlAgilityPack;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.Threading.Channels;
 using System.Threading.Tasks;
+using System.Threading;
+using HtmlAgilityPack;
+using static System.Net.Mime.MediaTypeNames;
+using System;
 
 namespace JobsGeParser;
 
 public class JobsGeClient
 {
-	private static HttpClient _client;
-	private Repository _repository;
-	private List<int> _jobs;
+	private static HttpClient _client = null!;
+	private readonly JobsGeParserOptions _ops;
+	private readonly HtmlProcessor _processor;
+	private readonly Repo _repo;
 
-	public JobsGeClient()
+	public JobsGeClient(
+		JobsGeParserOptions ops,
+		IHttpClientFactory httpClientFactory,
+		HtmlProcessor processor,
+		Repo repo)
 	{
-		InitializeHttpClient();
-		_repository = new Repository();
+		_ops = ops;
+		_processor = processor;
+		_repo = repo;
+		_client = httpClientFactory.CreateClient("JobsGeClient");
 	}
 
-	private static void InitializeHttpClient()
+	public async Task RetrievePageItemsAsync(Channel<JobApplication> channel)
 	{
-		_client = new HttpClient();
-		_client.BaseAddress = new Uri(Constants.BaseAddress);
-	}
-
-	private static async Task<string> GetContent()
-	{
-		var response = await _client.GetAsync(Constants.RequestUri);
+		var response = await _client.GetAsync(_ops.JobsListUrl);
 
 		var content = await response.Content.ReadAsStringAsync();
 
-		return content;
+		var jobs = _processor.ParseHtmlAndGetJobApplicationsList(content);
+		
+		var processing = BatchProcessingAsync(channel);
+		
+		foreach (var item in jobs)
+			channel.Writer.WriteAsync(item);
+
+		await processing;
 	}
 
-	private static Task<HtmlDocument> LoadDocument(string document)
+	private async Task BatchProcessingAsync(Channel<JobApplication> channel)
 	{
-		var htmlDocument = new HtmlDocument();
-		htmlDocument.LoadHtml(document);
-		return Task.FromResult(htmlDocument);
-	}
+		await channel.Reader.WaitToReadAsync();
 
-	public async Task<IEnumerable<JobApplication>> GetJobApplicationsAsync()
-	{
-		var content = await GetContent();
-		var document = await LoadDocument(content);
-		var table = await ParseHtmlDocument(document);
-		var applications = await ReadJobsTable(table);
-
-		return applications;
-	}
-
-	private async Task<IEnumerable<JobApplication>> ReadJobsTable(IEnumerable<IEnumerable<string>> table)
-	{
-		var jobs = new List<JobApplication>();
-		int i = 0;
-		foreach (var row in table)
+		while (channel.Reader.Count > 0)
 		{
-			var nameAndLink = row.ElementAt(0).Split('|');
-			var companyAndLink = row.ElementAt(1).Split('|');
+			var application = await channel.Reader.ReadAsync();
 
-			var application = new JobApplication
-			{
-				Id = int.Parse(nameAndLink[1].Split("id=")[1]),
-				Name = nameAndLink[0],
-				Link = nameAndLink[1],
-				Company = companyAndLink[0],
-				CompanyLink = companyAndLink.Length == 1 ? null : companyAndLink[1],
-				Published = row.ElementAt(2).GetDate(),
-				EndDate = row.ElementAt(3).GetDate(),
-			};
-			Console.ForegroundColor = ConsoleColor.White;
+			var response = await _client.GetAsync(application.Link);
 
-			Console.WriteLine($"{i++} Got {application.Id} Description");
+			var content = await response.Content.ReadAsStringAsync();
 
-			await Task.Delay(400);
-			application.Description = await ReadDescription(application);
+			application.SetDescription(_processor.ParseDescription(content));
 
-			await _repository.Insert(application);
-			Console.WriteLine("\tChecking for active status...");
-			await _repository.CheckJobs(application);
-
-			jobs.Add(application);
+			_repo.Save(application);
+			await Task.Delay(500);
 		}
 
-		return jobs.ToList();
-	}
-
-	private async Task<string> ReadDescription(JobApplication application)
-	{
-		var response = await _client.GetAsync(application.Link);
-		var content = await response.Content.ReadAsStringAsync();
-
-		var document = new HtmlDocument();
-		document.LoadHtml(content);
-		return document.DocumentNode.SelectSingleNode("//table[@class='ad']").Descendants("tr").ElementAt(3).InnerText.Trim();
-	}
-
-	private async Task<IEnumerable<IEnumerable<string>>> ParseHtmlDocument(HtmlDocument document)
-	{
-		var table = document.DocumentNode
-			.SelectSingleNode($"//html//body//div[@class='{Constants.ClassToGet}']//table")
-			.Descendants("tr")
-			.Skip(1)
-			.Where(tr => tr.Elements("td").Count() > 1)
-			.Select(tr => tr.Elements("td").Select(td =>
-			{
-				var text = td.InnerText.Trim();
-				var links = td.SelectNodes("a");
-				var linkValue = string.Empty;
-				if (links != null)
-					linkValue = links[0].Attributes[0].Value;
-
-				return string.IsNullOrEmpty(text) ? null : string.Concat(text, "|", linkValue).TrimEnd('|');
-			}).Where(x => !string.IsNullOrEmpty(x)).ToList())
-			.ToList();
-
-		return await Task.FromResult(table);
+		channel.Writer.Complete();
 	}
 }

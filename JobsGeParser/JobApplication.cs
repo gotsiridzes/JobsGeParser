@@ -2,63 +2,39 @@
 
 public class JobApplication
 {
-	private string _link;
-	private string _companyLink;
-	private int _id;
-	private string _name;
-	private string _company;
-	private DateTime _published;
-	private DateTime _endDate;
+    public JobApplication(
+        int id,
+        string name,
+        string company,
+        DateOnly published,
+        DateOnly endDate)
+    {
+        Id = id;
+        Name = name;
+        Company = company;
+        Published = published;
+        EndDate = endDate;
+    }
 
-	public int Id 
-	{ 
-		get => _id; 
-		set => _id = value; 
-	}
-        
-	public string Name 
-	{ 
-		get => _name; 
-		set => _name = value; 
-	}
-        
-	public string Link
-	{
-		get => _link;
+    public int Id { get; private set; }
 
-		set => _link = string.Concat(Constants.BaseAddress, value);
-	}
-        
-	public string Company 
-	{ 
-		get => _company; 
-		set => _company = value; 
-	}
-        
-	public string CompanyLink
-	{
-		get => _companyLink;
-		set => _companyLink = string.Concat(Constants.BaseAddress, value);
-	}
+    public string Name { get; private set; }
 
-	public DateTime Published 
-	{ 
-		get => _published; 
-		set => _published = value; 
-	}
+    public string Link { get; private set; }
 
-	public DateTime EndDate 
-	{ 
-		get => _endDate; 
-		set => _endDate = value; 
-	}
+    public string Company { get; private set; }
 
-	private string _description;
+    public string CompanyLink { get; private set; }
 
-	public string Description
-	{
-		get { return _description; }
-		set { _description = value; }
-	}
+    public DateOnly Published { get; private set; }
 
+    public DateOnly EndDate { get; private set; }
+
+    public string? Description { get; private set; }
+
+    public void SetDescription(string description) => Description = description;
+
+    public void SetLink(string link) => Link = link;
+
+    public void SetCompanyLink(string companyLink) => CompanyLink = companyLink;
 }
