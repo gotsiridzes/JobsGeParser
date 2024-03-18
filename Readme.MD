@@ -7,10 +7,10 @@
 
  ## Usage
  there are three http methods that can be used to get the job listings.
- 1. api/jobs/retrieve - this method will retrieve the job listings from the website.
- 
- 2. api/jobs/ - this method will retrieve the job listings from the database (in this case in-memory db/list). 
- The job listings are stored in the database after they are retrieved from the website.
 
+ 1. api/jobs/retrieve - this method will retrieve the job listings from the website.
+ The job listings are stored in the database after they are retrieved from the website.
+ 
+ 2. api/jobs/ - this method will retrieve the job listings from the database (in this case in-memory db/list).  
 
  3. api/jobs/dotnet - this method will retrieve the job listings which contain .net in the title.
