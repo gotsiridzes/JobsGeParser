@@ -5,15 +5,15 @@ namespace JobsGeParser;
 
 public class Repo
 {
-    private readonly List<JobApplication> _applications = new List<JobApplication>();
+	private readonly List<JobApplication> _applications = new List<JobApplication>();
 
-    public void Save(JobApplication applications) =>
-        _applications.Add(applications);
+	public void Save(JobApplication applications) =>
+		_applications.Add(applications);
 
-    public IEnumerable<JobApplication> GetProcessedApplications() =>
-        _applications;
+	public IEnumerable<JobApplication> GetProcessedApplications() =>
+		_applications;
 
-    public IEnumerable<JobApplication> ListDotnetApplications() =>
-	    _applications.Where(a => a.Name.ToLower().Contains(".net"));
+	public IEnumerable<JobApplication> ListDotnetApplications() =>
+		_applications.Where(a => a.Name.ToLower().Contains(".net"));
 
 }
