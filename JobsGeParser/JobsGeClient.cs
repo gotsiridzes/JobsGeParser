@@ -1,12 +1,6 @@
-﻿using System.Collections.Generic;
-using System.Linq;
-using System.Net.Http;
+﻿using System.Net.Http;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using System.Threading;
-using HtmlAgilityPack;
-using static System.Net.Mime.MediaTypeNames;
-using System;
 
 namespace JobsGeParser;
 

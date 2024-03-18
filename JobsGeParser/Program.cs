@@ -1,9 +1,7 @@
 ﻿using JobsGeParser;
-using JobsGeParser.Configuration;
 using JobsGeParser.Endpoints;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
 

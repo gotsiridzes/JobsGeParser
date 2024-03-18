@@ -22,5 +22,4 @@ public static class Subscriptions
 
 		jobs.MapGet("", async (Repo repo) => Results.Ok(repo.GetProcessedApplications()));
 	}
-
 }
