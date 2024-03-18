@@ -8,7 +8,6 @@ namespace JobsGeParser;
 
 public class JobsGeClient
 {
-
 	private static HttpClient _client;
 	private Repository _repository;
 	private List<int> _jobs;

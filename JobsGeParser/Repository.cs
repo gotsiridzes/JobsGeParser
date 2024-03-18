@@ -6,7 +6,6 @@ namespace JobsGeParser;
 
 public class Repository : IRepository<JobApplication>
 {
-
 	public async Task Delete(JobApplication entity)
 	{
 		using (var connection = GetConnection())
