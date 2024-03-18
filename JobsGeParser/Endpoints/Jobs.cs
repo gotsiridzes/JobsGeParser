@@ -12,14 +12,15 @@ public static class Subscriptions
 		var jobs = routeBuilder.MapGroup("api/jobs/");
 		var channel = Channel.CreateBounded<JobApplication>(20);
 
+		jobs.MapGet("", async (Repo repo) => Results.Ok(repo.GetProcessedApplications()));
+		
 		jobs.MapPost("retrieve", async (JobsGeClient client) =>
 		{
 			await client.RetrievePageItemsAsync(channel);
 
 			return Results.Ok();
 		});
-
-		jobs.MapGet("", async (Repo repo) => Results.Ok(repo.GetProcessedApplications()));
+		
 		jobs.MapGet("dotnet", async (Repo repo) => Results.Ok(repo.ListDotnetApplications()));
 	}
 }
