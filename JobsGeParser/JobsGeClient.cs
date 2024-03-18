@@ -31,14 +31,14 @@ public class JobsGeClient
 
 		var content = await response.Content.ReadAsStringAsync();
 
-		return await Task.FromResult(content);
+		return content;
 	}
 
-	private static async Task<HtmlDocument> LoadDocument(string document)
+	private static Task<HtmlDocument> LoadDocument(string document)
 	{
 		var htmlDocument = new HtmlDocument();
 		htmlDocument.LoadHtml(document);
-		return await Task.FromResult(htmlDocument);
+		return Task.FromResult(htmlDocument);
 	}
 
 	public async Task<IEnumerable<JobApplication>> GetJobApplicationsAsync()
@@ -48,7 +48,7 @@ public class JobsGeClient
 		var table = await ParseHtmlDocument(document);
 		var applications = await ReadJobsTable(table);
 
-		return await Task.FromResult(applications);
+		return applications;
 	}
 
 	private async Task<IEnumerable<JobApplication>> ReadJobsTable(IEnumerable<IEnumerable<string>> table)
@@ -71,7 +71,7 @@ public class JobsGeClient
 				EndDate = row.ElementAt(3).GetDate(),
 			};
 			Console.ForegroundColor = ConsoleColor.White;
-                
+
 			Console.WriteLine($"{i++} Got {application.Id} Description");
 
 			await Task.Delay(400);
@@ -84,7 +84,7 @@ public class JobsGeClient
 			jobs.Add(application);
 		}
 
-		return await Task.FromResult(jobs.ToList());
+		return jobs.ToList();
 	}
 
 	private async Task<string> ReadDescription(JobApplication application)
@@ -99,7 +99,8 @@ public class JobsGeClient
 
 	private async Task<IEnumerable<IEnumerable<string>>> ParseHtmlDocument(HtmlDocument document)
 	{
-		var table = document.DocumentNode.SelectSingleNode($"//html//body//div[@class='{Constants.ClassToGet}']//table")
+		var table = document.DocumentNode
+			.SelectSingleNode($"//html//body//div[@class='{Constants.ClassToGet}']//table")
 			.Descendants("tr")
 			.Skip(1)
 			.Where(tr => tr.Elements("td").Count() > 1)
@@ -107,7 +108,7 @@ public class JobsGeClient
 			{
 				var text = td.InnerText.Trim();
 				var links = td.SelectNodes("a");
-				string linkValue = string.Empty;
+				var linkValue = string.Empty;
 				if (links != null)
 					linkValue = links[0].Attributes[0].Value;
 
