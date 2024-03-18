@@ -3,11 +3,14 @@
 GET {{Api_HostAddress}}/api/jobs
 Accept: application/json
 
-###
+### Retrieve all applications in IT category
 
 POST {{Api_HostAddress}}/api/jobs/retrieve
 Accept: application/json
 Content-Type: application/json
 
-###
+### List dotnet applications
+
+GET {{Api_HostAddress}}/api/jobs/dotnet
+Accept: application/json
   

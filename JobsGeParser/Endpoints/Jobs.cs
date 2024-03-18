@@ -20,5 +20,6 @@ public static class Subscriptions
 		});
 
 		jobs.MapGet("", async (Repo repo) => Results.Ok(repo.GetProcessedApplications()));
+		jobs.MapGet("dotnet", async (Repo repo) => Results.Ok(repo.ListDotnetApplications()));
 	}
 }

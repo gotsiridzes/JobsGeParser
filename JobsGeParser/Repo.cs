@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 
 namespace JobsGeParser;
 
@@ -11,4 +12,8 @@ public class Repo
 
     public IEnumerable<JobApplication> GetProcessedApplications() =>
         _applications;
+
+    public IEnumerable<JobApplication> ListDotnetApplications() =>
+	    _applications.Where(a => a.Name.ToLower().Contains(".net"));
+
 }
