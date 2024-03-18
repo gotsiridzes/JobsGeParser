@@ -15,5 +15,4 @@ public class Repo
 
 	public IEnumerable<JobApplication> ListDotnetApplications() =>
 		_applications.Where(a => a.Name.ToLower().Contains(".net"));
-
 }
