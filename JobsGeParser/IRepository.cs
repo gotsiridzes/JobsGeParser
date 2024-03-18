@@ -1,17 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace JobsGeParser
+namespace JobsGeParser;
+
+public interface IRepository<T>
 {
-    public interface IRepository<T>
-    {
-        Task Insert(T entity);
-        Task Delete(T entity);
-        Task Update(T entity);
-        Task<T> Get(int id);
-        Task<IEnumerable<T>> GetAll();
-        Task CheckJobs(JobApplication job);
-    }
+	Task Insert(T entity);
+	Task Delete(T entity);
+	Task Update(T entity);
+	Task<T> Get(int id);
+	Task<IEnumerable<T>> GetAll();
+	Task CheckJobs(JobApplication job);
 }
