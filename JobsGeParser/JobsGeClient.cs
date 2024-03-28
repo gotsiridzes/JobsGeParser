@@ -1,6 +1,7 @@
 ﻿using System.Net.Http;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using System.Text;
 
 namespace JobsGeParser;
 
