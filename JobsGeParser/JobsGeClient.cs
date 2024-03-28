@@ -50,7 +50,7 @@ public class JobsGeClient
 			var response = await _client.GetAsync(application.Link);
 
 			var content = await response.Content.ReadAsStringAsync();
-
+			content.Replace("\/r\/n", Environment.NewLine);
 			application.SetDescription(_processor.ParseDescription(content));
 
 			_repo.Save(application);
