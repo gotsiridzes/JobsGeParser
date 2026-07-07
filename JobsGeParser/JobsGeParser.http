@@ -7,22 +7,32 @@ Accept: application/json
 
 ###
 
-GET {{Api_HostAddress}}/api/jobs
+GET {{Api_HostAddress}}/api/jobs?page=1&pageSize=20
 Accept: application/json
 
 ###
 
-GET {{Api_HostAddress}}/api/jobs?category=it
+GET {{Api_HostAddress}}/api/jobs?page=2&pageSize=10&category=it
 Accept: application/json
 
 ###
 
-GET {{Api_HostAddress}}/api/jobs/dotnet
+GET {{Api_HostAddress}}/api/jobs?q=developer&category=it
 Accept: application/json
 
 ###
 
-GET {{Api_HostAddress}}/api/jobs/dotnet?category=it
+GET {{Api_HostAddress}}/api/jobs/1
+Accept: application/json
+
+###
+
+GET {{Api_HostAddress}}/api/jobs/dotnet?page=1&pageSize=20
+Accept: application/json
+
+###
+
+GET {{Api_HostAddress}}/api/jobs/dotnet?category=it&q=senior
 Accept: application/json
 
 ###

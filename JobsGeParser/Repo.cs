@@ -4,11 +4,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace JobsGeParser;
 
-public class Repo
+public class Repo(JobsDbContext db, JobsGeParserOptions options)
 {
-	private readonly JobsDbContext _db;
-
-	public Repo(JobsDbContext db) => _db = db;
+	private readonly JobsDbContext _db = db;
+	private readonly JobsGeParserOptions _options = options;
 
 	public async Task<JobUpsertResult> UpsertAsync(JobApplication job, CancellationToken ct = default)
 	{
@@ -118,38 +117,85 @@ public class Repo
 		return result;
 	}
 
-	public async Task<IReadOnlyList<JobApplication>> GetJobsAsync(string? categorySlug = null, CancellationToken ct = default)
-	{
-		var query = _db.Jobs.AsQueryable();
-
-		if (!string.IsNullOrWhiteSpace(categorySlug))
-		{
-			query = query.Where(j => j.JobCategories.Any(jc => jc.CategorySlug == categorySlug));
-		}
-
-		var entities = await query
-			.OrderByDescending(j => j.LastSeenAt)
-			.ToListAsync(ct);
-
-		return entities.Select(MapToDomain).ToList();
-	}
-
-	public async Task<IReadOnlyList<JobApplication>> ListDotnetApplicationsAsync(
-		string? categorySlug = null,
+	public async Task<JobsPageDto> GetJobsPageAsync(
+		JobQuery query,
+		int page,
+		int pageSize,
 		CancellationToken ct = default)
 	{
-		var query = _db.Jobs.Where(j => EF.Functions.ILike(j.Name, "%.net%"));
+		pageSize = Math.Clamp(pageSize, 1, _options.MaxJobsPageSize);
+		page = Math.Max(page, 1);
 
-		if (!string.IsNullOrWhiteSpace(categorySlug))
-		{
-			query = query.Where(j => j.JobCategories.Any(jc => jc.CategorySlug == categorySlug));
-		}
+		var filtered = ApplyJobFilters(query);
 
-		var entities = await query
+		var totalCount = await filtered.CountAsync(ct);
+
+		var items = await filtered
 			.OrderByDescending(j => j.LastSeenAt)
+			.Skip((page - 1) * pageSize)
+			.Take(pageSize)
+			.Select(j => new JobListItemDto(
+				j.Id,
+				j.Name,
+				j.Link,
+				j.Company,
+				j.CompanyLink,
+				j.Published,
+				j.EndDate,
+				j.LastSeenAt))
 			.ToListAsync(ct);
 
-		return entities.Select(MapToDomain).ToList();
+		var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
+
+		return new JobsPageDto(items, totalCount, page, pageSize, totalPages);
+	}
+
+	public async Task<JobDetailDto?> GetJobByIdAsync(int id, CancellationToken ct = default)
+	{
+		var entity = await _db.Jobs
+			.AsNoTracking()
+			.Include(j => j.JobCategories)
+			.FirstOrDefaultAsync(j => j.Id == id, ct);
+
+		if (entity is null)
+			return null;
+
+		return new JobDetailDto(
+			entity.Id,
+			entity.Name,
+			entity.Link,
+			entity.Company,
+			entity.CompanyLink,
+			entity.Published,
+			entity.EndDate,
+			entity.Description,
+			entity.FirstSeenAt,
+			entity.LastSeenAt,
+			entity.UpdatedAt,
+			entity.JobCategories.Select(jc => jc.CategorySlug).OrderBy(s => s).ToList());
+	}
+
+	private IQueryable<JobEntity> ApplyJobFilters(JobQuery query)
+	{
+		var jobs = _db.Jobs.AsNoTracking();
+
+		if (!string.IsNullOrWhiteSpace(query.CategorySlug))
+		{
+			var slug = query.CategorySlug;
+			jobs = jobs.Where(j => j.JobCategories.Any(jc => jc.CategorySlug == slug));
+		}
+
+		if (!string.IsNullOrWhiteSpace(query.Search))
+		{
+			var pattern = $"%{query.Search}%";
+			jobs = jobs.Where(j =>
+				EF.Functions.ILike(j.Name, pattern) || EF.Functions.ILike(j.Company, pattern));
+		}
+
+		if (query.DotNetOnly)
+			jobs = jobs.Where(j => EF.Functions.ILike(j.Name, "%.net%"));
+
+		return jobs;
 	}
 
 	public async Task<IReadOnlyList<CategoryDto>> GetCategoriesAsync(CancellationToken ct = default)
@@ -413,18 +459,4 @@ public class Repo
 			UpdatedAt = updatedAt
 		};
 
-	private static JobApplication MapToDomain(JobEntity entity)
-	{
-		var application = new JobApplication(
-			entity.Id,
-			entity.Name,
-			entity.Company,
-			entity.Published,
-			entity.EndDate);
-
-		application.SetLink(entity.Link);
-		application.SetCompanyLink(entity.CompanyLink);
-		application.SetDescription(entity.Description ?? string.Empty);
-		return application;
-	}
 }

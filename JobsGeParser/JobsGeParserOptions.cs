@@ -18,6 +18,10 @@ public class JobsGeParserOptions
 
 	public int ProgressUpdateInterval { get; set; } = 5;
 
+	public int DefaultJobsPageSize { get; set; } = 20;
+
+	public int MaxJobsPageSize { get; set; } = 100;
+
 	public IEnumerable<JobCategoryOptions> EnabledCategories =>
 		Categories.Where(c => c.Enabled);
 }

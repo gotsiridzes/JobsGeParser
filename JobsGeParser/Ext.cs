@@ -75,6 +75,15 @@ public static class Ext
 
 		if (self.ProgressUpdateInterval < 1)
 			throw new ArgumentOutOfRangeException(nameof(self.ProgressUpdateInterval), "Must be at least 1.");
+
+		if (self.DefaultJobsPageSize < 1)
+			throw new ArgumentOutOfRangeException(nameof(self.DefaultJobsPageSize), "Must be at least 1.");
+
+		if (self.MaxJobsPageSize < 1)
+			throw new ArgumentOutOfRangeException(nameof(self.MaxJobsPageSize), "Must be at least 1.");
+
+		if (self.DefaultJobsPageSize > self.MaxJobsPageSize)
+			throw new ArgumentOutOfRangeException(nameof(self.DefaultJobsPageSize), "Cannot exceed MaxJobsPageSize.");
 	}
 
 	private static void ValidateConnectionString(string connectionString)

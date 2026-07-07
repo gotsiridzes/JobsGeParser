@@ -80,7 +80,9 @@ flowchart TB
     "ScrapeOnStartup": false,
     "DetailPageDelayMs": 500,
     "DetailFetchConcurrency": 3,
-    "ProgressUpdateInterval": 5
+    "ProgressUpdateInterval": 5,
+    "DefaultJobsPageSize": 20,
+    "MaxJobsPageSize": 100
   }
 }
 ```
@@ -95,6 +97,8 @@ flowchart TB
 | `DetailPageDelayMs` | Minimum ms between HTTP request starts (global across all parallel workers) |
 | `DetailFetchConcurrency` | Max parallel detail-page fetches per category (default 3) |
 | `ProgressUpdateInterval` | Update `scrape_runs` counts every N completed jobs (default 5) |
+| `DefaultJobsPageSize` | Default page size for `GET /api/jobs` (default 20) |
+| `MaxJobsPageSize` | Maximum allowed `pageSize` query param (default 100) |
 
 Add more categories by appending entries with their jobs.ge list URLs.
 
@@ -107,8 +111,9 @@ Base URL (development): `http://localhost:50423`
 | Method | Route | Behavior |
 |--------|-------|----------|
 | `GET` | `/api/jobs/categories` | Categories with `jobCount` and `latestScrapeRun` per slug |
-| `GET` | `/api/jobs/?category={slug}` | Jobs in category (omit `category` for all) |
-| `GET` | `/api/jobs/dotnet?category={slug}` | `.net` title filter + optional category |
+| `GET` | `/api/jobs` | Paginated job list (`?page`, `?pageSize`, `?category`, `?q`) — no descriptions |
+| `GET` | `/api/jobs/{id}` | Single job with full description and category slugs |
+| `GET` | `/api/jobs/dotnet` | Paginated `.net` title filter (same query params as list) |
 
 ### Scrape management
 
