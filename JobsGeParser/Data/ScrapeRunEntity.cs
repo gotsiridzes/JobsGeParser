@@ -4,6 +4,12 @@ public class ScrapeRunEntity
 {
 	public long Id { get; set; }
 
+	public Guid? BatchId { get; set; }
+
+	public string? CategorySlug { get; set; }
+
+	public CategoryEntity? Category { get; set; }
+
 	public DateTimeOffset StartedAt { get; set; }
 
 	public DateTimeOffset? FinishedAt { get; set; }

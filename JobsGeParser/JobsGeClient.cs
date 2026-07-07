@@ -21,7 +21,10 @@ public class JobsGeClient
 		_client = httpClientFactory.CreateClient("JobsGeClient");
 	}
 
-	public async Task<ScrapeResult> ScrapeAsync(long scrapeRunId, CancellationToken ct = default)
+	public async Task<ScrapeResult> ScrapeCategoryAsync(
+		long scrapeRunId,
+		JobCategoryOptions category,
+		CancellationToken ct = default)
 	{
 		var stopwatch = Stopwatch.StartNew();
 		var inserted = 0;
@@ -29,7 +32,7 @@ public class JobsGeClient
 		var skipped = 0;
 		var failed = 0;
 
-		var response = await _client.GetAsync(_ops.JobsListUrl, ct);
+		var response = await _client.GetAsync(category.ListUrl, ct);
 		response.EnsureSuccessStatusCode();
 
 		var content = await response.Content.ReadAsStringAsync(ct);
@@ -54,6 +57,8 @@ public class JobsGeClient
 					case JobUpsertResult.Updated: updated++; break;
 					case JobUpsertResult.Skipped: skipped++; break;
 				}
+
+				await _repo.LinkJobToCategoryAsync(job.Id, category.Slug, ct);
 			}
 			catch (Exception)
 			{

@@ -1,14 +1,71 @@
 @Api_HostAddress = http://localhost:50423
 
+GET {{Api_HostAddress}}/api/jobs/categories
+Accept: application/json
+
+###
+
 GET {{Api_HostAddress}}/api/jobs
 Accept: application/json
 
 ###
 
-GET {{Api_HostAddress}}/api/jobs/dotnet
+GET {{Api_HostAddress}}/api/jobs?category=it
+Accept: application/json
+
+###
+
+GET {{Api_HostAddress}}/api/jobs/dotnet?category=it
+Accept: application/json
+
+###
+
+### Scrape management — full overview (worker + active + history)
+
+GET {{Api_HostAddress}}/api/jobs/scrape/overview
+Accept: application/json
+
+###
+
+GET {{Api_HostAddress}}/api/jobs/scrape/worker
+Accept: application/json
+
+###
+
+GET {{Api_HostAddress}}/api/jobs/scrape/runs/active
+Accept: application/json
+
+###
+
+GET {{Api_HostAddress}}/api/jobs/scrape/runs?limit=50&offset=0
+Accept: application/json
+
+###
+
+GET {{Api_HostAddress}}/api/jobs/scrape/runs?status=Running
+Accept: application/json
+
+###
+
+GET {{Api_HostAddress}}/api/jobs/scrape/runs?category=it
+Accept: application/json
+
+###
+
+GET {{Api_HostAddress}}/api/jobs/scrape/runs/1
+Accept: application/json
+
+###
+
+GET {{Api_HostAddress}}/api/jobs/scrape/batches
 Accept: application/json
 
 ###
 
 GET {{Api_HostAddress}}/api/jobs/scrape/status
+Accept: application/json
+
+###
+
+GET {{Api_HostAddress}}/api/jobs/scrape/status/it
 Accept: application/json

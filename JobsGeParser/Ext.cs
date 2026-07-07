@@ -22,6 +22,8 @@ public static class Ext
 
 		self.AddHttpClient("JobsGeClient", c => c.BaseAddress = new Uri(options.BaseUrl));
 
+		self.AddSingleton<ScrapeWorkerState>();
+
 		self.AddScoped<JobsGeClient>()
 			.AddSingleton<HtmlProcessor>()
 			.AddScoped<Repo>();
@@ -39,8 +41,27 @@ public static class Ext
 		if (self.BaseUrl is null)
 			throw new ArgumentNullException(nameof(self.BaseUrl));
 
-		if (self.JobsListUrl is null)
-			throw new ArgumentNullException(nameof(self.JobsListUrl));
+		if (self.Categories is null || self.Categories.Count == 0)
+			throw new ArgumentException("At least one category is required.", nameof(self.Categories));
+
+		if (!self.Categories.Any(c => c.Enabled))
+			throw new ArgumentException("At least one enabled category is required.", nameof(self.Categories));
+
+		var slugs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		foreach (var category in self.Categories)
+		{
+			if (string.IsNullOrWhiteSpace(category.Slug))
+				throw new ArgumentException("Category slug is required.");
+
+			if (!slugs.Add(category.Slug))
+				throw new ArgumentException($"Duplicate category slug: {category.Slug}");
+
+			if (string.IsNullOrWhiteSpace(category.Name))
+				throw new ArgumentException($"Category name is required for slug: {category.Slug}");
+
+			if (string.IsNullOrWhiteSpace(category.ListUrl))
+				throw new ArgumentException($"Category list URL is required for slug: {category.Slug}");
+		}
 
 		if (self.ScrapeIntervalMinutes < 1)
 			throw new ArgumentOutOfRangeException(nameof(self.ScrapeIntervalMinutes), "Must be at least 1 minute.");

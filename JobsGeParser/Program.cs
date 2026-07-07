@@ -19,11 +19,14 @@ builder.Services.AddJobsGeService(ops, connectionString);
 
 var app = builder.Build();
 
-if (databaseOptions.AutoMigrate)
+using (var scope = app.Services.CreateScope())
 {
-	using var scope = app.Services.CreateScope();
 	var db = scope.ServiceProvider.GetRequiredService<JobsDbContext>();
-	db.Database.Migrate();
+
+	if (databaseOptions.AutoMigrate)
+		db.Database.Migrate();
+
+	await CategorySync.SyncAsync(db, ops);
 }
 
 app.RegisterJobsEndpoints();

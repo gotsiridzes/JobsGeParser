@@ -4,7 +4,7 @@ public class JobsGeParserOptions
 {
 	public string BaseUrl { get; set; } = null!;
 
-	public string JobsListUrl { get; set; } = null!;
+	public List<JobCategoryOptions> Categories { get; set; } = [];
 
 	public bool ScrapeEnabled { get; set; } = true;
 
@@ -13,4 +13,7 @@ public class JobsGeParserOptions
 	public bool ScrapeOnStartup { get; set; }
 
 	public int DetailPageDelayMs { get; set; } = 500;
+
+	public IEnumerable<JobCategoryOptions> EnabledCategories =>
+		Categories.Where(c => c.Enabled);
 }

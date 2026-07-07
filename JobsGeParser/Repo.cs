@@ -1,4 +1,5 @@
 ﻿using JobsGeParser.Data;
+using JobsGeParser.Workers;
 using Microsoft.EntityFrameworkCore;
 
 namespace JobsGeParser;
@@ -41,29 +42,77 @@ public class Repo
 		return JobUpsertResult.Updated;
 	}
 
-	public async Task<IReadOnlyList<JobApplication>> GetProcessedApplicationsAsync(CancellationToken ct = default)
+	public async Task LinkJobToCategoryAsync(int jobId, string categorySlug, CancellationToken ct = default)
 	{
-		var entities = await _db.Jobs
+		var now = DateTimeOffset.UtcNow;
+		var link = await _db.JobCategories.FindAsync([jobId, categorySlug], ct);
+
+		if (link is null)
+		{
+			_db.JobCategories.Add(new JobCategoryEntity
+			{
+				JobId = jobId,
+				CategorySlug = categorySlug,
+				FirstSeenAt = now,
+				LastSeenAt = now
+			});
+		}
+		else
+		{
+			link.LastSeenAt = now;
+		}
+
+		await _db.SaveChangesAsync(ct);
+	}
+
+	public async Task<IReadOnlyList<JobApplication>> GetJobsAsync(string? categorySlug = null, CancellationToken ct = default)
+	{
+		var query = _db.Jobs.AsQueryable();
+
+		if (!string.IsNullOrWhiteSpace(categorySlug))
+		{
+			query = query.Where(j => j.JobCategories.Any(jc => jc.CategorySlug == categorySlug));
+		}
+
+		var entities = await query
 			.OrderByDescending(j => j.LastSeenAt)
 			.ToListAsync(ct);
 
 		return entities.Select(MapToDomain).ToList();
 	}
 
-	public async Task<IReadOnlyList<JobApplication>> ListDotnetApplicationsAsync(CancellationToken ct = default)
+	public async Task<IReadOnlyList<JobApplication>> ListDotnetApplicationsAsync(
+		string? categorySlug = null,
+		CancellationToken ct = default)
 	{
-		var entities = await _db.Jobs
-			.Where(j => EF.Functions.ILike(j.Name, "%.net%"))
+		var query = _db.Jobs.Where(j => EF.Functions.ILike(j.Name, "%.net%"));
+
+		if (!string.IsNullOrWhiteSpace(categorySlug))
+		{
+			query = query.Where(j => j.JobCategories.Any(jc => jc.CategorySlug == categorySlug));
+		}
+
+		var entities = await query
 			.OrderByDescending(j => j.LastSeenAt)
 			.ToListAsync(ct);
 
 		return entities.Select(MapToDomain).ToList();
 	}
 
-	public async Task<ScrapeRunEntity> StartScrapeRunAsync(CancellationToken ct = default)
+	public async Task<IReadOnlyList<CategoryEntity>> GetCategoriesAsync(CancellationToken ct = default) =>
+		await _db.Categories
+			.OrderBy(c => c.Name)
+			.ToListAsync(ct);
+
+	public async Task<ScrapeRunEntity> StartScrapeRunAsync(
+		string categorySlug,
+		Guid batchId,
+		CancellationToken ct = default)
 	{
 		var run = new ScrapeRunEntity
 		{
+			BatchId = batchId,
+			CategorySlug = categorySlug,
 			StartedAt = DateTimeOffset.UtcNow,
 			Status = ScrapeRunStatus.Running
 		};
@@ -118,10 +167,139 @@ public class Repo
 		await _db.SaveChangesAsync(ct);
 	}
 
-	public async Task<ScrapeRunEntity?> GetLatestScrapeRunAsync(CancellationToken ct = default) =>
+	public async Task<ScrapeRunEntity?> GetScrapeRunByIdAsync(long id, CancellationToken ct = default) =>
 		await _db.ScrapeRuns
+			.AsNoTracking()
+			.FirstOrDefaultAsync(r => r.Id == id, ct);
+
+	public async Task<IReadOnlyList<ScrapeRunEntity>> GetActiveScrapeRunsAsync(CancellationToken ct = default) =>
+		await _db.ScrapeRuns
+			.AsNoTracking()
+			.Where(r => r.Status == ScrapeRunStatus.Running)
+			.OrderByDescending(r => r.StartedAt)
+			.ToListAsync(ct);
+
+	public async Task<ScrapeRunsPageDto> GetScrapeRunsAsync(
+		string? status = null,
+		string? categorySlug = null,
+		Guid? batchId = null,
+		int limit = 50,
+		int offset = 0,
+		CancellationToken ct = default)
+	{
+		limit = Math.Clamp(limit, 1, 200);
+		offset = Math.Max(offset, 0);
+
+		var query = _db.ScrapeRuns.AsNoTracking();
+
+		if (!string.IsNullOrWhiteSpace(status))
+			query = query.Where(r => r.Status == status);
+
+		if (!string.IsNullOrWhiteSpace(categorySlug))
+			query = query.Where(r => r.CategorySlug == categorySlug);
+
+		if (batchId is not null)
+			query = query.Where(r => r.BatchId == batchId);
+
+		var totalCount = await query.CountAsync(ct);
+
+		var items = await query
+			.OrderByDescending(r => r.StartedAt)
+			.Skip(offset)
+			.Take(limit)
+			.ToListAsync(ct);
+
+		return new ScrapeRunsPageDto(items, totalCount, limit, offset);
+	}
+
+	public async Task<IReadOnlyList<ScrapeBatchSummaryDto>> GetRecentBatchesAsync(
+		int limit = 20,
+		CancellationToken ct = default)
+	{
+		limit = Math.Clamp(limit, 1, 100);
+
+		var batchIds = await _db.ScrapeRuns
+			.AsNoTracking()
+			.Where(r => r.BatchId != null)
+			.GroupBy(r => r.BatchId)
+			.OrderByDescending(g => g.Max(r => r.StartedAt))
+			.Take(limit)
+			.Select(g => g.Key!.Value)
+			.ToListAsync(ct);
+
+		var summaries = new List<ScrapeBatchSummaryDto>();
+		foreach (var id in batchIds)
+		{
+			var runs = await _db.ScrapeRuns
+				.AsNoTracking()
+				.Where(r => r.BatchId == id)
+				.OrderBy(r => r.StartedAt)
+				.ToListAsync(ct);
+
+			if (runs.Count == 0)
+				continue;
+
+			summaries.Add(new ScrapeBatchSummaryDto(
+				id,
+				runs.Min(r => r.StartedAt),
+				runs.All(r => r.FinishedAt is not null) ? runs.Max(r => r.FinishedAt) : null,
+				runs.Count,
+				runs.Count(r => r.Status == ScrapeRunStatus.Running),
+				runs.Count(r => r.Status == ScrapeRunStatus.Completed),
+				runs.Count(r => r.Status == ScrapeRunStatus.Failed),
+				runs));
+		}
+
+		return summaries;
+	}
+
+	public async Task<ScrapeOverviewDto> GetScrapeOverviewAsync(
+		JobsGeParserOptions options,
+		ScrapeWorkerSnapshot workerSnapshot,
+		CancellationToken ct = default)
+	{
+		var worker = new ScrapeWorkerStatusDto(
+			options.ScrapeEnabled,
+			options.ScrapeIntervalMinutes,
+			options.ScrapeOnStartup,
+			workerSnapshot);
+
+		var activeRuns = await GetActiveScrapeRunsAsync(ct);
+		var latestPerCategory = await GetLatestScrapeRunsPerCategoryAsync(ct);
+		var recentRuns = (await GetScrapeRunsAsync(limit: 20, offset: 0, ct: ct)).Items;
+		var recentBatches = await GetRecentBatchesAsync(limit: 10, ct);
+
+		return new ScrapeOverviewDto(
+			worker,
+			activeRuns,
+			latestPerCategory,
+			recentRuns,
+			recentBatches);
+	}
+
+	public async Task<ScrapeRunEntity?> GetLatestScrapeRunAsync(string categorySlug, CancellationToken ct = default) =>
+		await _db.ScrapeRuns
+			.Where(r => r.CategorySlug == categorySlug)
 			.OrderByDescending(r => r.StartedAt)
 			.FirstOrDefaultAsync(ct);
+
+	public async Task<IReadOnlyList<ScrapeRunEntity>> GetLatestScrapeRunsPerCategoryAsync(CancellationToken ct = default)
+	{
+		var enabledSlugs = await _db.Categories
+			.Where(c => c.Enabled)
+			.Select(c => c.Slug)
+			.ToListAsync(ct);
+
+		var results = new List<ScrapeRunEntity>();
+		foreach (var slug in enabledSlugs)
+		{
+			var run = await GetLatestScrapeRunAsync(slug, ct);
+			if (run is not null)
+				results.Add(run);
+		}
+
+		return results;
+	}
 
 	private static bool HasSameContent(JobEntity existing, JobApplication job) =>
 		existing.Name == job.Name

@@ -10,9 +10,10 @@ alwaysApply: true
 - DI: register in Ext.AddJobsGeService; keep Program.cs thin
 - Endpoints: JobsGeParser.Endpoints, MapGroup("api/jobs/"), extension RegisterJobsEndpoints
 - Parsing in HtmlProcessor; HTTP in JobsGeClient; storage in Repo (PostgreSQL via EF Core)
-- Scraping runs via JobScrapeWorker BackgroundService — no manual POST retrieve endpoint
-- Upsert by jobs.ge Id: insert / skip (unchanged) / update (changed fields)
-- jobs.ge IT listings use JobsListUrl with cid=6
+- Categories defined in appsettings JobsGeParserOptions.Categories (slug, name, listUrl, enabled)
+- CategorySync runs on startup — syncs categories table from config
+- Scraping runs via JobScrapeWorker — one scrape run per enabled category per tick
+- Upsert by jobs.ge Id; link jobs to categories via job_categories many-to-many
 - Respect DetailPageDelayMs between detail-page requests
 - DbContext and Repo are scoped; use IServiceScopeFactory in hosted services
 - Do not add backup .csproj files or unrelated CI workflows

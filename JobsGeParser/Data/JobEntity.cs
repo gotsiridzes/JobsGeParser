@@ -23,4 +23,6 @@ public class JobEntity
 	public DateTimeOffset LastSeenAt { get; set; }
 
 	public DateTimeOffset? UpdatedAt { get; set; }
+
+	public ICollection<JobCategoryEntity> JobCategories { get; set; } = [];
 }

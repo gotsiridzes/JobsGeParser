@@ -1,6 +1,6 @@
 # JobsGeParser
 
-A minimal ASP.NET Core API that scrapes [jobs.ge](https://jobs.ge/) IT job listings, fetches each job's description, and persists results in PostgreSQL. A background worker scrapes on a configurable interval.
+A minimal ASP.NET Core API that scrapes [jobs.ge](https://jobs.ge/) job listings by category, fetches each job's description, and persists results in PostgreSQL. A background worker scrapes each enabled category on a configurable interval.
 
 ## Tech stack
 
@@ -19,83 +19,60 @@ A minimal ASP.NET Core API that scrapes [jobs.ge](https://jobs.ge/) IT job listi
 JobsGeParser/
 ├── JobsGeParser.sln
 ├── Readme.MD
+├── docs/plans/               # Plan archive (implemented + planned)
 ├── AGENTS.md
-├── .cursor/                  # Project rules and skills
+├── .cursor/
 └── JobsGeParser/
     ├── Program.cs
-    ├── Ext.cs
-    ├── Repo.cs               # EF-backed upsert + queries
-    ├── JobsGeClient.cs       # Scrape orchestration
+    ├── CategorySync.cs
+    ├── Repo.cs
+    ├── JobsGeClient.cs
     ├── Workers/JobScrapeWorker.cs
     ├── Data/
-    │   ├── JobsDbContext.cs
-    │   ├── JobEntity.cs
-    │   ├── ScrapeRunEntity.cs
-    │   └── Migrations/
-    ├── Endpoints/Jobs.cs
-    ├── appsettings.json
-    └── JobsGeParser.http
+    └── Endpoints/Jobs.cs
 ```
 
 ## Architecture
 
 ```mermaid
 flowchart TB
-    Worker[JobScrapeWorker] -->|"scope per run"| Client[JobsGeClient]
-    Client --> Processor[HtmlProcessor]
-    Client --> Repo[Repo.UpsertAsync]
-    Endpoints[GET api/jobs/*] --> Repo
-    Repo --> DbContext[JobsDbContext]
-    DbContext --> PG[(PostgreSQL)]
+    Config[appsettings Categories] --> Worker[JobScrapeWorker]
+    Worker -->|"per category"| Client[JobsGeClient.ScrapeCategoryAsync]
+    Client --> Repo[Repo.UpsertAsync + LinkJobToCategory]
+    Repo --> Jobs[(jobs)]
+    Repo --> JobCategories[(job_categories)]
+    Endpoints[GET api/jobs] --> Repo
 ```
 
-### Dependency injection (`Ext.AddJobsGeService`)
+### Scrape flow
 
-| Service | Lifetime |
-|---------|----------|
-| `JobsGeParserOptions` | Singleton |
-| `JobsDbContext` | Scoped |
-| `Repo` | Scoped |
-| `JobsGeClient` | Scoped |
-| `HtmlProcessor` | Singleton |
-| `JobScrapeWorker` | Hosted service |
+1. `JobScrapeWorker` fires on `ScrapeIntervalMinutes`.
+2. For each **enabled category** in config:
+   - Start a `scrape_runs` row with `CategorySlug`
+   - `JobsGeClient.ScrapeCategoryAsync` GETs that category's `ListUrl`
+   - For each job: fetch detail, upsert, link to category
+   - Live progress written to `scrape_runs` after each job
+3. Categories synced from appsettings on every startup (`CategorySync`).
 
-### Scrape flow (background worker)
+### Job–category model
 
-1. `JobScrapeWorker` fires on `ScrapeIntervalMinutes` (or on startup if `ScrapeOnStartup` is true).
-2. Creates a DI scope; records a `scrape_runs` row with status `Running`.
-3. `JobsGeClient.ScrapeAsync` GETs the listing page, parses jobs, then for each job GETs the detail page.
-4. `Repo.UpsertAsync` inserts, updates, or skips based on jobs.ge `Id` and field comparison.
-5. 500 ms delay between detail requests (`DetailPageDelayMs`).
-6. Run marked `Completed` or `Failed` with counts.
-
-### Idempotent upsert
-
-Primary key is jobs.ge `Id` (from link query `id=`).
-
-| Case | Action |
-|------|--------|
-| **Insert** | New `Id` — insert row; set `FirstSeenAt` and `LastSeenAt` |
-| **Skip** | Same `Id`, identical fields — update `LastSeenAt` only |
-| **Update** | Same `Id`, any field changed — overwrite fields; set `LastSeenAt` and `UpdatedAt` |
-
-Compared fields: `Name`, `Link`, `Company`, `CompanyLink`, `Published`, `EndDate`, `Description`.
+- **Many-to-many** via `job_categories` — a job can belong to multiple categories if it appears in multiple listings.
+- Job content upsert is still keyed on jobs.ge `Id`; category links are updated separately.
 
 ## Configuration
 
-`appsettings.json`:
-
 ```json
 {
-  "ConnectionStrings": {
-    "JobsGeParser": "Host=localhost;Port=5432;Database=jobsgeparser;Username=postgres;Password=postgres"
-  },
-  "Database": {
-    "AutoMigrate": false
-  },
   "JobsGeParserOptions": {
     "BaseUrl": "https://jobs.ge/",
-    "JobsListUrl": "?page=1&q=&cid=6&lid=1&jid=1",
+    "Categories": [
+      {
+        "Slug": "it",
+        "Name": "IT / Programming",
+        "ListUrl": "?page=1&q=&cid=6&lid=1&jid=1",
+        "Enabled": true
+      }
+    ],
     "ScrapeEnabled": true,
     "ScrapeIntervalMinutes": 60,
     "ScrapeOnStartup": false,
@@ -106,52 +83,52 @@ Compared fields: `Name`, `Link`, `Company`, `CompanyLink`, `Published`, `EndDate
 
 | Setting | Purpose |
 |---------|---------|
-| `ConnectionStrings:JobsGeParser` | PostgreSQL connection |
-| `Database:AutoMigrate` | Apply EF migrations on startup (true in Development) |
-| `ScrapeEnabled` | Enable/disable background scraping |
-| `ScrapeIntervalMinutes` | Minutes between scrape runs |
-| `ScrapeOnStartup` | Run one scrape when the app starts |
-| `DetailPageDelayMs` | Delay between detail-page HTTP requests |
+| `Categories` | List of scrape targets (slug, name, list URL, enabled) |
+| `Categories[].Slug` | Stable key for filtering (e.g. `it`) |
+| `Categories[].ListUrl` | Relative listing URL on jobs.ge |
+| `ScrapeEnabled` | Kill switch for background scraping |
+| `ScrapeIntervalMinutes` | Minutes between scrape ticks (all categories per tick) |
+| `DetailPageDelayMs` | Delay between detail-page requests |
 
-Override via environment variables: `ConnectionStrings__JobsGeParser`, `JobsGeParserOptions__ScrapeIntervalMinutes`, etc.
+Add more categories by appending entries with their jobs.ge list URLs.
 
 ## API endpoints
 
 Base URL (development): `http://localhost:50423`
 
+### Jobs
+
 | Method | Route | Behavior |
 |--------|-------|----------|
-| `GET` | `/api/jobs/` | All jobs from PostgreSQL |
-| `GET` | `/api/jobs/dotnet` | Jobs whose title contains `.net` |
-| `GET` | `/api/jobs/scrape/status` | Latest scrape run (counts, status, timestamps) |
+| `GET` | `/api/jobs/categories` | All categories (slug, name, enabled) |
+| `GET` | `/api/jobs/?category={slug}` | Jobs in category (omit `category` for all) |
+| `GET` | `/api/jobs/dotnet?category={slug}` | `.net` title filter + optional category |
 
-Scraping is automatic via `JobScrapeWorker` — there is no manual retrieve endpoint.
+### Scrape management
 
-Use `JobsGeParser/JobsGeParser.http` for manual testing.
+| Method | Route | Behavior |
+|--------|-------|----------|
+| `GET` | `/api/jobs/scrape/overview` | **Full picture**: worker state, active runs, latest per category, recent runs & batches |
+| `GET` | `/api/jobs/scrape/worker` | Live background worker state (current tick, category, run id) |
+| `GET` | `/api/jobs/scrape/runs` | Paginated run history (`?status`, `?category`, `?batchId`, `?limit`, `?offset`) |
+| `GET` | `/api/jobs/scrape/runs/active` | All runs with status `Running` |
+| `GET` | `/api/jobs/scrape/runs/{id}` | Single scrape run by id |
+| `GET` | `/api/jobs/scrape/batches` | Recent scrape ticks (grouped runs sharing a `batchId`) |
+| `GET` | `/api/jobs/scrape/batches/{batchId}` | All runs in one tick |
+| `GET` | `/api/jobs/scrape/status` | Latest run per enabled category (legacy shortcut) |
+| `GET` | `/api/jobs/scrape/status/{slug}` | Latest run for one category |
 
-## Database setup
+## Database
 
-### Prerequisites
+Tables: `jobs`, `categories`, `job_categories`, `scrape_runs`.
 
-- PostgreSQL instance with database `jobsgeparser` created
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-
-### Migrations
-
-From solution root:
+Migrations:
 
 ```bash
 dotnet ef database update --project JobsGeParser/JobsGeParser.csproj --startup-project JobsGeParser/JobsGeParser.csproj
 ```
 
-In Development, `Database:AutoMigrate` is `true` in `appsettings.Development.json` — migrations apply on startup.
-
-Production: run `dotnet ef database update` in your deploy pipeline.
-
-### Tables
-
-- **`jobs`** — scraped job listings (PK = jobs.ge id)
-- **`scrape_runs`** — background scrape history and counts
+On startup: categories synced from config; existing jobs without a category are backfilled to `it`.
 
 ## Development
 
@@ -159,26 +136,11 @@ Production: run `dotnet ef database update` in your deploy pipeline.
 dotnet run --project JobsGeParser/JobsGeParser.csproj
 ```
 
-Set your PostgreSQL connection string in `appsettings.Development.json` or via `ConnectionStrings__JobsGeParser` env var.
+Set PostgreSQL connection string in `appsettings.Development.json`.
 
-With `ScrapeOnStartup: true` in Development, the first scrape begins when the app starts.
+## Plans
 
-## Conventions for future changes
-
-1. **DI** — register in `Ext.AddJobsGeService`; keep `Program.cs` thin.
-2. **Endpoints** — read-only routes in `Endpoints/Jobs.cs`; scraping stays in `JobScrapeWorker`.
-3. **Parsing** — `HtmlProcessor`; HTTP orchestration — `JobsGeClient`; persistence — `Repo`.
-4. **New config** — `JobsGeParserOptions` + `appsettings.json` + validation in `Ext`.
-5. **DbContext** — scoped; use `IServiceScopeFactory` in hosted services.
-
-## Known limitations
-
-| Item | Notes |
-|------|-------|
-| Single listing page | Only `JobsListUrl` page is scraped |
-| Per-job errors swallowed | Failed detail fetches increment `Failed` count; scrape continues |
-| Backup `.csproj` files | Safe to delete |
-| `dotnet-desktop.yml` | Unused CI template |
+See [`docs/plans/`](docs/plans/) for archived implementation plans.
 
 ## AI assistant context
 

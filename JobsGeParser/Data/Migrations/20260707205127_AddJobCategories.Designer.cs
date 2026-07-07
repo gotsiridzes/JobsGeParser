@@ -3,6 +3,7 @@ using System;
 using JobsGeParser.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace JobsGeParser.Data.Migrations
 {
     [DbContext(typeof(JobsDbContext))]
-    partial class JobsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260707205127_AddJobCategories")]
+    partial class AddJobCategories
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -124,9 +127,6 @@ namespace JobsGeParser.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
-                    b.Property<Guid?>("BatchId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("CategorySlug")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
@@ -159,11 +159,7 @@ namespace JobsGeParser.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BatchId");
-
                     b.HasIndex("StartedAt");
-
-                    b.HasIndex("Status");
 
                     b.HasIndex("CategorySlug", "StartedAt");
 
