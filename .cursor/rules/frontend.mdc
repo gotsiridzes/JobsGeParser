@@ -1,0 +1,13 @@
+---
+description: Frontend dashboard conventions
+globs: frontend/**/*
+---
+
+# Frontend dashboard
+
+- Vite + React + TypeScript in `frontend/`
+- API client in `frontend/src/api/` — types mirror backend DTOs (`ScrapeManagementDtos`, `JobsApiDtos`)
+- TanStack Query for data fetching; poll scrape overview 5s when active, 30s otherwise
+- Dev proxy: `/api` → `http://localhost:50423` in `frontend/vite.config.ts`
+- Pages in `frontend/src/pages/`; shared components in `frontend/src/components/`
+- Do not add write endpoints or auth in v1 — UI is read-only against existing API

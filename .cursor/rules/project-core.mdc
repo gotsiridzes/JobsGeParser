@@ -5,8 +5,8 @@ alwaysApply: true
 
 # JobsGeParser core
 
-- Single .NET 8 minimal API; one project in JobsGeParser.sln
-- Read Readme.MD before structural changes
+- Single .NET 8 minimal API in `backend/JobsGeParser/`; solution at `backend/JobsGeParser.sln`
+- Read `backend/README.md` before structural changes
 - DI: register in `Configuration/DependencyInjection.AddJobsGeService`; keep Program.cs thin
 - Endpoints: `JobsGeParser.Endpoints`, MapGroup("api/jobs/"), extension `RegisterJobsEndpoints`
 - Parsing in `Scraping/HtmlProcessor`; HTTP in `Scraping/JobsGeClient`; storage in `Data/Repo` (PostgreSQL via EF Core)
@@ -16,4 +16,5 @@ alwaysApply: true
 - Upsert by jobs.ge Id; link jobs to categories via job_categories many-to-many
 - Respect DetailPageDelayMs between detail-page requests
 - DbContext and Repo are scoped; use IServiceScopeFactory in hosted services
+- Frontend dashboard lives in `frontend/` — separate npm project, not in the .sln
 - Do not add backup .csproj files or unrelated CI workflows

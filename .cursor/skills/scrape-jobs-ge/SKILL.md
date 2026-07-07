@@ -53,4 +53,4 @@ JobScrapeWorker (PeriodicTimer)
 
 ## Reference
 
-See `Readme.MD` sections **Scrape flow** and **Configuration**.
+See `backend/README.md` sections **Scrape flow** and **Configuration**.

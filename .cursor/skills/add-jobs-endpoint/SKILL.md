@@ -12,8 +12,8 @@ description: Adds or modifies JobsGeParser minimal API endpoints under api/jobs/
 3. Use `MapGroup` prefix `api/jobs/` — full path is group + route segment
 4. Inject `Repo` via minimal API parameters (read-only endpoints only)
 5. Return `Results.Ok(...)` for JSON responses
-6. Add entry to `JobsGeParser.http` for manual test
-7. Update `Readme.MD` API table if behavior is user-facing
+6. Add entry to `backend/JobsGeParser/JobsGeParser.http` for manual test
+7. Update `backend/README.md` API table if behavior is user-facing
 
 ## Template
 
@@ -59,5 +59,5 @@ jobs.MapGet("", async (
 | New filter/query | `Data/Repo.cs` |
 | New route | `Endpoints/JobsEndpoints.cs` |
 | DTOs | `Endpoints/Dtos/JobsApiDtos.cs` |
-| Manual test | `JobsGeParser.http` |
-| User-facing docs | `Readme.MD` |
+| Manual test | `backend/JobsGeParser/JobsGeParser.http` |
+| User-facing docs | `backend/README.md` |
