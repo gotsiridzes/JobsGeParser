@@ -6,9 +6,9 @@ alwaysApply: false
 
 # C# conventions
 
-- Namespace: JobsGeParser (endpoints: JobsGeParser.Endpoints)
+- Namespace: `JobsGeParser` root; subfolders use matching namespaces (`Configuration`, `Models`, `Data`, `Scraping`, `Endpoints`, `Endpoints.Dtos`, `Workers`)
 - Nullable enabled — avoid null-forgiving unless justified
-- New config: JobsGeParserOptions + appsettings.json + validation in Ext
+- New config: `JobsGeParserOptions` + appsettings.json + validation in `Configuration/DependencyInjection`
 - New services: singleton unless stateless/scoped need arises (DbContext, Repo, JobsGeClient are scoped)
 - Use IHttpClientFactory named client "JobsGeClient" — no new static HttpClient fields
-- Prefer extension methods on IServiceCollection / IEndpointRouteBuilder (match Ext.cs pattern)
+- Prefer extension methods on IServiceCollection / IEndpointRouteBuilder (match `DependencyInjection.cs` pattern)

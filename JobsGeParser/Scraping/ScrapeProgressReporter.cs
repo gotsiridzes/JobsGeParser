@@ -1,4 +1,6 @@
-namespace JobsGeParser;
+using JobsGeParser.Data;
+
+namespace JobsGeParser.Scraping;
 
 public class ScrapeProgressReporter
 {

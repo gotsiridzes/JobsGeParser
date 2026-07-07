@@ -9,20 +9,21 @@ description: Modifies jobs.ge scraping, HtmlAgilityPack selectors, or JobsGeClie
 
 | File | Responsibility |
 |------|----------------|
-| `HtmlProcessor.cs` | List + description parsing |
-| `JobsGeClient.cs` | Job Channel + parallel consumers, per-job scoped Repo |
-| `ScrapeRequestThrottle.cs` | Global concurrency cap + min delay between HTTP requests |
-| `ScrapeProgressReporter.cs` | Throttled `scrape_runs` progress updates |
+| `Scraping/HtmlProcessor.cs` | List + description parsing |
+| `Scraping/JobsGeClient.cs` | Job Channel + parallel consumers, per-job scoped Repo |
+| `Scraping/ScrapeRequestThrottle.cs` | Global concurrency cap + min delay between HTTP requests |
+| `Scraping/ScrapeProgressReporter.cs` | Throttled `scrape_runs` progress updates |
+| `Scraping/GeorgianDateExtensions.cs` | Georgian month name → DateOnly parsing |
+| `Scraping/CategorySync.cs` | Sync categories from appsettings to DB on startup |
 | `Workers/JobScrapeWorker.cs` | Category Channel + parallel category consumers per tick |
 | `Workers/ScrapeWorkerState.cs` | Live tick state, `activeCategoryRuns` |
-| `CategorySync.cs` | Sync categories from appsettings to DB on startup |
-| `JobsGeParserOptions` | Categories[], category/job concurrency, delays |
-| `Repo.cs` | `UpsertAndLinkCategoryAsync` (single SaveChanges) |
+| `Configuration/JobsGeParserOptions.cs` | Categories[], category/job concurrency, delays |
+| `Data/Repo.cs` | `UpsertAndLinkCategoryAsync` (single SaveChanges) |
 
 ## Workflow
 
 1. Confirm live HTML structure on jobs.ge (listing + detail page)
-2. Update selectors in `HtmlProcessor` only
+2. Update selectors in `Scraping/HtmlProcessor` only
 3. Add new categories in appsettings `Categories` array with slug, name, listUrl
 4. Tune `CategoryScrapeConcurrency`, `DetailFetchConcurrency`, and `DetailPageDelayMs` for jobs.ge rate limits
 5. Verify via `GET /api/jobs/scrape/overview` and `GET /api/jobs?category={slug}`

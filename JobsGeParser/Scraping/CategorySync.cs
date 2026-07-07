@@ -1,7 +1,8 @@
+using JobsGeParser.Configuration;
 using JobsGeParser.Data;
 using Microsoft.EntityFrameworkCore;
 
-namespace JobsGeParser;
+namespace JobsGeParser.Scraping;
 
 public static class CategorySync
 {

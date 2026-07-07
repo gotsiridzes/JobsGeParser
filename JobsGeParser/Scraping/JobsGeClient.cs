@@ -1,7 +1,10 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Threading.Channels;
+using JobsGeParser.Configuration;
+using JobsGeParser.Data;
+using JobsGeParser.Models;
 
-namespace JobsGeParser;
+namespace JobsGeParser.Scraping;
 
 public class JobsGeClient
 {

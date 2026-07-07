@@ -8,7 +8,7 @@ description: Adds or modifies JobsGeParser minimal API endpoints under api/jobs/
 ## Steps
 
 1. Add async query method on `Repo` if needed (mirror `GetJobsPageAsync`)
-2. Register route in `Endpoints/Jobs.cs` inside `RegisterJobsEndpoints`
+2. Register route in `Endpoints/JobsEndpoints.cs` inside `RegisterJobsEndpoints`
 3. Use `MapGroup` prefix `api/jobs/` — full path is group + route segment
 4. Inject `Repo` via minimal API parameters (read-only endpoints only)
 5. Return `Results.Ok(...)` for JSON responses
@@ -27,11 +27,11 @@ jobs.MapGet("segment", async (Repo repo, CancellationToken ct) =>
 List endpoints return `JobsPageDto` — never load all jobs or descriptions in one response.
 
 ```csharp
-// Repo.cs
+// Data/Repo.cs
 public async Task<JobsPageDto> GetJobsPageAsync(
     JobQuery query, int page, int pageSize, CancellationToken ct = default)
 
-// Endpoints/Jobs.cs
+// Endpoints/JobsEndpoints.cs
 jobs.MapGet("", async (
     Repo repo,
     JobsGeParserOptions options,
@@ -56,8 +56,8 @@ jobs.MapGet("", async (
 
 | Change | File |
 |--------|------|
-| New filter/query | `Repo.cs` |
-| New route | `Endpoints/Jobs.cs` |
-| DTOs | `JobsApiDtos.cs` |
+| New filter/query | `Data/Repo.cs` |
+| New route | `Endpoints/JobsEndpoints.cs` |
+| DTOs | `Endpoints/Dtos/JobsApiDtos.cs` |
 | Manual test | `JobsGeParser.http` |
 | User-facing docs | `Readme.MD` |

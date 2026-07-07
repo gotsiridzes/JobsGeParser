@@ -1,5 +1,7 @@
 using System.Threading.Channels;
+using JobsGeParser.Configuration;
 using JobsGeParser.Data;
+using JobsGeParser.Scraping;
 
 namespace JobsGeParser.Workers;
 

@@ -1,4 +1,4 @@
-﻿namespace JobsGeParser;
+namespace JobsGeParser.Configuration;
 
 public class JobsGeParserOptions
 {

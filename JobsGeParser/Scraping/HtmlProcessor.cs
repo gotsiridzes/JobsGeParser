@@ -1,8 +1,9 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using HtmlAgilityPack;
+using JobsGeParser.Models;
 
-namespace JobsGeParser;
+namespace JobsGeParser.Scraping;
 
 public class HtmlProcessor
 {

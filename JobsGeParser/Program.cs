@@ -1,6 +1,7 @@
-﻿using JobsGeParser;
+﻿using JobsGeParser.Configuration;
 using JobsGeParser.Data;
 using JobsGeParser.Endpoints;
+using JobsGeParser.Scraping;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 

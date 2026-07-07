@@ -1,6 +1,6 @@
 ---
 description: jobs.ge HTML parsing rules
-globs: JobsGeParser/**/{HtmlProcessor,Ext}.cs
+globs: JobsGeParser/**/{HtmlProcessor,GeorgianDateExtensions}.cs
 alwaysApply: false
 ---
 

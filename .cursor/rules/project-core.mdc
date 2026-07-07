@@ -7,9 +7,9 @@ alwaysApply: true
 
 - Single .NET 8 minimal API; one project in JobsGeParser.sln
 - Read Readme.MD before structural changes
-- DI: register in Ext.AddJobsGeService; keep Program.cs thin
-- Endpoints: JobsGeParser.Endpoints, MapGroup("api/jobs/"), extension RegisterJobsEndpoints
-- Parsing in HtmlProcessor; HTTP in JobsGeClient; storage in Repo (PostgreSQL via EF Core)
+- DI: register in `Configuration/DependencyInjection.AddJobsGeService`; keep Program.cs thin
+- Endpoints: `JobsGeParser.Endpoints`, MapGroup("api/jobs/"), extension `RegisterJobsEndpoints`
+- Parsing in `Scraping/HtmlProcessor`; HTTP in `Scraping/JobsGeClient`; storage in `Data/Repo` (PostgreSQL via EF Core)
 - Categories defined in appsettings JobsGeParserOptions.Categories (slug, name, listUrl, enabled)
 - CategorySync runs on startup — syncs categories table from config
 - Scraping runs via JobScrapeWorker — one scrape run per enabled category per tick

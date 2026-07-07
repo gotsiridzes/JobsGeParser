@@ -1,7 +1,7 @@
 using JobsGeParser.Data;
 using JobsGeParser.Workers;
 
-namespace JobsGeParser;
+namespace JobsGeParser.Endpoints.Dtos;
 
 public record CategoryDto(
 	string Slug,

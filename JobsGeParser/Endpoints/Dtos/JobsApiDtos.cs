@@ -1,4 +1,4 @@
-namespace JobsGeParser;
+namespace JobsGeParser.Endpoints.Dtos;
 
 public record JobQuery(string? CategorySlug, string? Search, bool DotNetOnly);
 

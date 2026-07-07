@@ -24,12 +24,37 @@ JobsGeParser/
 ├── .cursor/
 └── JobsGeParser/
     ├── Program.cs
-    ├── CategorySync.cs
-    ├── Repo.cs
-    ├── JobsGeClient.cs
-    ├── Workers/JobScrapeWorker.cs
+    ├── GlobalUsings.cs
+    ├── Configuration/
+    │   ├── JobsGeParserOptions.cs
+    │   ├── JobCategoryOptions.cs
+    │   ├── DatabaseOptions.cs
+    │   └── DependencyInjection.cs
+    ├── Models/
+    │   ├── JobApplication.cs
+    │   ├── JobUpsertResult.cs
+    │   └── ScrapeResult.cs
     ├── Data/
-    └── Endpoints/Jobs.cs
+    │   ├── Repo.cs
+    │   ├── JobsDbContext.cs
+    │   ├── *Entity.cs
+    │   └── Migrations/
+    ├── Scraping/
+    │   ├── JobsGeClient.cs
+    │   ├── HtmlProcessor.cs
+    │   ├── ScrapeRequestThrottle.cs
+    │   ├── ScrapeProgressReporter.cs
+    │   ├── CategorySync.cs
+    │   └── GeorgianDateExtensions.cs
+    ├── Workers/
+    │   ├── JobScrapeWorker.cs
+    │   └── ScrapeWorkerState.cs
+    └── Endpoints/
+        ├── Dtos/
+        │   ├── JobsApiDtos.cs
+        │   └── ScrapeManagementDtos.cs
+        ├── JobsEndpoints.cs
+        └── ScrapeEndpoints.cs
 ```
 
 ## Architecture

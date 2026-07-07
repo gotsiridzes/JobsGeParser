@@ -1,4 +1,6 @@
-namespace JobsGeParser;
+using JobsGeParser.Configuration;
+
+namespace JobsGeParser.Scraping;
 
 public class ScrapeRequestThrottle(JobsGeParserOptions options)
 {

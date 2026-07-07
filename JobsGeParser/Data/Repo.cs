@@ -1,8 +1,10 @@
-﻿using JobsGeParser.Data;
+using JobsGeParser.Configuration;
+using JobsGeParser.Endpoints.Dtos;
+using JobsGeParser.Models;
 using JobsGeParser.Workers;
 using Microsoft.EntityFrameworkCore;
 
-namespace JobsGeParser;
+namespace JobsGeParser.Data;
 
 public class Repo(JobsDbContext db, JobsGeParserOptions options)
 {
@@ -458,5 +460,4 @@ public class Repo(JobsDbContext db, JobsGeParserOptions options)
 			LastSeenAt = lastSeenAt,
 			UpdatedAt = updatedAt
 		};
-
 }

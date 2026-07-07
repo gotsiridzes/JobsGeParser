@@ -1,4 +1,6 @@
+using JobsGeParser.Configuration;
 using JobsGeParser.Data;
+using JobsGeParser.Endpoints.Dtos;
 using JobsGeParser.Workers;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -6,7 +8,7 @@ using Microsoft.AspNetCore.Routing;
 
 namespace JobsGeParser.Endpoints;
 
-public static class Scrape
+public static class ScrapeEndpoints
 {
 	public static void RegisterScrapeEndpoints(this IEndpointRouteBuilder routeBuilder)
 	{

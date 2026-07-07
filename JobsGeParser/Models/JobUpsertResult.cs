@@ -1,4 +1,4 @@
-namespace JobsGeParser;
+namespace JobsGeParser.Models;
 
 public enum JobUpsertResult
 {
