@@ -7,10 +7,10 @@ description: Adds or modifies JobsGeParser minimal API endpoints under api/jobs/
 
 ## Steps
 
-1. Add query/filter method on Repo if needed (mirror `ListDotnetApplications`)
+1. Add async query method on `Repo` if needed (mirror `ListDotnetApplicationsAsync`)
 2. Register route in `Endpoints/Jobs.cs` inside `RegisterJobsEndpoints`
 3. Use `MapGroup` prefix `api/jobs/` — full path is group + route segment
-4. Inject `Repo` or `JobsGeClient` via minimal API parameters
+4. Inject `Repo` via minimal API parameters (read-only endpoints only)
 5. Return `Results.Ok(...)` for JSON responses
 6. Add entry to `JobsGeParser.http` for manual test
 7. Update `Readme.MD` API table if behavior is user-facing
@@ -18,18 +18,21 @@ description: Adds or modifies JobsGeParser minimal API endpoints under api/jobs/
 ## Template
 
 ```csharp
-jobs.MapGet("segment", (Repo repo) => Results.Ok(repo.SomeMethod()));
+jobs.MapGet("segment", async (Repo repo, CancellationToken ct) =>
+    Results.Ok(await repo.SomeMethodAsync(ct)));
 ```
 
 ## Example (existing pattern)
 
 ```csharp
 // Repo.cs
-public IEnumerable<JobApplication> ListDotnetApplications() =>
-    _applications.Where(a => a.Name.ToLower().Contains(".net"));
+public async Task<IReadOnlyList<JobApplication>> ListDotnetApplicationsAsync(CancellationToken ct = default) =>
+    (await _db.Jobs.Where(j => EF.Functions.ILike(j.Name, "%.net%")).ToListAsync(ct))
+        .Select(MapToDomain).ToList();
 
 // Endpoints/Jobs.cs
-jobs.MapGet("dotnet", async (Repo repo) => Results.Ok(repo.ListDotnetApplications()));
+jobs.MapGet("dotnet", async (Repo repo, CancellationToken ct) =>
+    Results.Ok(await repo.ListDotnetApplicationsAsync(ct)));
 ```
 
 ## Files to touch

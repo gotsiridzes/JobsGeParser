@@ -1,13 +1,10 @@
-﻿using System.Net.Http;
-using System.Threading.Channels;
-using System.Threading.Tasks;
-using System.Text;
+﻿using System.Diagnostics;
 
 namespace JobsGeParser;
 
 public class JobsGeClient
 {
-	private static HttpClient _client = null!;
+	private readonly HttpClient _client;
 	private readonly JobsGeParserOptions _ops;
 	private readonly HtmlProcessor _processor;
 	private readonly Repo _repo;
@@ -24,40 +21,50 @@ public class JobsGeClient
 		_client = httpClientFactory.CreateClient("JobsGeClient");
 	}
 
-	public async Task RetrievePageItemsAsync(Channel<JobApplication> channel)
+	public async Task<ScrapeResult> ScrapeAsync(CancellationToken ct = default)
 	{
-		var response = await _client.GetAsync(_ops.JobsListUrl);
+		var stopwatch = Stopwatch.StartNew();
+		var inserted = 0;
+		var updated = 0;
+		var skipped = 0;
+		var failed = 0;
 
-		var content = await response.Content.ReadAsStringAsync();
+		var response = await _client.GetAsync(_ops.JobsListUrl, ct);
+		response.EnsureSuccessStatusCode();
 
-		var jobs = _processor.ParseHtmlAndGetJobApplicationsList(content);
-		
-		var processing = BatchProcessingAsync(channel);
-		
-		foreach (var item in jobs)
-			channel.Writer.WriteAsync(item);
+		var content = await response.Content.ReadAsStringAsync(ct);
+		var jobs = _processor.ParseHtmlAndGetJobApplicationsList(content).ToList();
 
-		await processing;
-	}
-
-	private async Task BatchProcessingAsync(Channel<JobApplication> channel)
-	{
-		await channel.Reader.WaitToReadAsync();
-
-		while (channel.Reader.Count > 0)
+		foreach (var job in jobs)
 		{
-			var application = await channel.Reader.ReadAsync();
+			ct.ThrowIfCancellationRequested();
 
-			var response = await _client.GetAsync(application.Link);
+			try
+			{
+				var detailResponse = await _client.GetAsync(job.Link, ct);
+				detailResponse.EnsureSuccessStatusCode();
 
-			var content = await response.Content.ReadAsStringAsync();
-			content.Replace("\/r\/n", Environment.NewLine);
-			application.SetDescription(_processor.ParseDescription(content));
+				var detailContent = await detailResponse.Content.ReadAsStringAsync(ct);
+				job.SetDescription(_processor.ParseDescription(detailContent));
 
-			_repo.Save(application);
-			await Task.Delay(500);
+				var result = await _repo.UpsertAsync(job, ct);
+				switch (result)
+				{
+					case JobUpsertResult.Inserted: inserted++; break;
+					case JobUpsertResult.Updated: updated++; break;
+					case JobUpsertResult.Skipped: skipped++; break;
+				}
+			}
+			catch (Exception)
+			{
+				failed++;
+			}
+
+			if (_ops.DetailPageDelayMs > 0)
+				await Task.Delay(_ops.DetailPageDelayMs, ct);
 		}
 
-		channel.Writer.Complete();
+		stopwatch.Stop();
+		return new ScrapeResult(inserted, updated, skipped, failed, stopwatch.Elapsed);
 	}
 }

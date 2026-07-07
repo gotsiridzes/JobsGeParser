@@ -1,26 +1,37 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using JobsGeParser.Data;
+using JobsGeParser.Workers;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace JobsGeParser;
 
 public static class Ext
 {
-	public static IServiceCollection AddJobsGeService(this IServiceCollection self,
-		JobsGeParserOptions options)
+	public static IServiceCollection AddJobsGeService(
+		this IServiceCollection self,
+		JobsGeParserOptions options,
+		string connectionString)
 	{
-		options.ValidateRapidApiSdkOptions();
+		options.ValidateOptions();
+		ValidateConnectionString(connectionString);
 
 		self.AddSingleton(options);
 
+		self.AddDbContext<JobsDbContext>(dbOptions =>
+			dbOptions.UseNpgsql(connectionString));
+
 		self.AddHttpClient("JobsGeClient", c => c.BaseAddress = new Uri(options.BaseUrl));
 
-		self.AddSingleton<JobsGeClient>()
+		self.AddScoped<JobsGeClient>()
 			.AddSingleton<HtmlProcessor>()
-			.AddSingleton<Repo>();
+			.AddScoped<Repo>();
+
+		self.AddHostedService<JobScrapeWorker>();
 
 		return self;
 	}
 
-	private static void ValidateRapidApiSdkOptions(this JobsGeParserOptions self)
+	private static void ValidateOptions(this JobsGeParserOptions self)
 	{
 		if (self is null)
 			throw new ArgumentNullException(nameof(self));
@@ -30,6 +41,18 @@ public static class Ext
 
 		if (self.JobsListUrl is null)
 			throw new ArgumentNullException(nameof(self.JobsListUrl));
+
+		if (self.ScrapeIntervalMinutes < 1)
+			throw new ArgumentOutOfRangeException(nameof(self.ScrapeIntervalMinutes), "Must be at least 1 minute.");
+
+		if (self.DetailPageDelayMs < 0)
+			throw new ArgumentOutOfRangeException(nameof(self.DetailPageDelayMs), "Cannot be negative.");
+	}
+
+	private static void ValidateConnectionString(string connectionString)
+	{
+		if (string.IsNullOrWhiteSpace(connectionString))
+			throw new ArgumentException("Connection string 'JobsGeParser' is required.", nameof(connectionString));
 	}
 
 	public static DateOnly GetDate(this string value)

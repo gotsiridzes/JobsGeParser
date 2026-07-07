@@ -9,6 +9,6 @@ alwaysApply: false
 - Namespace: JobsGeParser (endpoints: JobsGeParser.Endpoints)
 - Nullable enabled — avoid null-forgiving unless justified
 - New config: JobsGeParserOptions + appsettings.json + validation in Ext
-- New services: singleton unless stateless/scoped need arises
+- New services: singleton unless stateless/scoped need arises (DbContext, Repo, JobsGeClient are scoped)
 - Use IHttpClientFactory named client "JobsGeClient" — no new static HttpClient fields
 - Prefer extension methods on IServiceCollection / IEndpointRouteBuilder (match Ext.cs pattern)

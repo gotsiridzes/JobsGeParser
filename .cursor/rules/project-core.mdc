@@ -9,8 +9,10 @@ alwaysApply: true
 - Read Readme.MD before structural changes
 - DI: register in Ext.AddJobsGeService; keep Program.cs thin
 - Endpoints: JobsGeParser.Endpoints, MapGroup("api/jobs/"), extension RegisterJobsEndpoints
-- Parsing in HtmlProcessor; HTTP in JobsGeClient; storage in Repo
-- Storage is in-memory only — data does not survive restarts
+- Parsing in HtmlProcessor; HTTP in JobsGeClient; storage in Repo (PostgreSQL via EF Core)
+- Scraping runs via JobScrapeWorker BackgroundService — no manual POST retrieve endpoint
+- Upsert by jobs.ge Id: insert / skip (unchanged) / update (changed fields)
 - jobs.ge IT listings use JobsListUrl with cid=6
-- Respect 500ms delay between detail-page requests in JobsGeClient
+- Respect DetailPageDelayMs between detail-page requests
+- DbContext and Repo are scoped; use IServiceScopeFactory in hosted services
 - Do not add backup .csproj files or unrelated CI workflows

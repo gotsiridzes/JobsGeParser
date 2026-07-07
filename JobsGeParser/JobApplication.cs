@@ -24,7 +24,7 @@ public class JobApplication
 
     public string Company { get; private set; }
 
-    public string CompanyLink { get; private set; }
+    public string? CompanyLink { get; private set; }
 
     public DateOnly Published { get; private set; }
 
@@ -36,5 +36,5 @@ public class JobApplication
 
     public void SetLink(string link) => Link = link;
 
-    public void SetCompanyLink(string companyLink) => CompanyLink = companyLink;
+    public void SetCompanyLink(string? companyLink) => CompanyLink = companyLink;
 }
