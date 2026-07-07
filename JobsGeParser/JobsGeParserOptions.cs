@@ -16,6 +16,8 @@ public class JobsGeParserOptions
 
 	public int DetailFetchConcurrency { get; set; } = 3;
 
+	public int CategoryScrapeConcurrency { get; set; } = 5;
+
 	public int ProgressUpdateInterval { get; set; } = 5;
 
 	public int DefaultJobsPageSize { get; set; } = 20;

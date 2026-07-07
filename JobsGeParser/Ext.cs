@@ -73,6 +73,9 @@ public static class Ext
 		if (self.DetailFetchConcurrency < 1)
 			throw new ArgumentOutOfRangeException(nameof(self.DetailFetchConcurrency), "Must be at least 1.");
 
+		if (self.CategoryScrapeConcurrency < 1)
+			throw new ArgumentOutOfRangeException(nameof(self.CategoryScrapeConcurrency), "Must be at least 1.");
+
 		if (self.ProgressUpdateInterval < 1)
 			throw new ArgumentOutOfRangeException(nameof(self.ProgressUpdateInterval), "Must be at least 1.");
 

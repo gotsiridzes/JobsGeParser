@@ -37,7 +37,7 @@ JobsGeParser/
 ```mermaid
 flowchart TB
     Config[appsettings Categories] --> Worker[JobScrapeWorker]
-    Worker -->|"per category"| Client[JobsGeClient.ScrapeCategoryAsync]
+    Worker -->|"N categories in parallel"| Client[JobsGeClient.ScrapeCategoryAsync]
     Client --> Repo[Repo.UpsertAndLinkCategoryAsync]
     Repo --> Jobs[(jobs)]
     Repo --> JobCategories[(job_categories)]
@@ -47,14 +47,17 @@ flowchart TB
 ### Scrape flow
 
 1. `JobScrapeWorker` fires on `ScrapeIntervalMinutes`.
-2. For each **enabled category** in config:
+2. Enabled categories are enqueued to a bounded `Channel`; **M parallel category consumers** run at once (`CategoryScrapeConcurrency`).
+3. Per category:
    - Start a `scrape_runs` row with `CategorySlug`
-   - `JobsGeClient.ScrapeCategoryAsync` GETs listing, enqueues jobs to a `Channel`
-   - **N parallel consumers** fetch detail pages (bounded by `DetailFetchConcurrency`)
+   - `JobsGeClient.ScrapeCategoryAsync` GETs listing, enqueues jobs to a job `Channel`
+   - **N parallel job consumers** fetch detail pages (bounded by `DetailFetchConcurrency`)
    - Each consumer uses its own DI scope; `UpsertAndLinkCategoryAsync` in one DB round-trip
    - Progress written every `ProgressUpdateInterval` jobs (plus final flush)
-3. HTTP requests throttled globally via `ScrapeRequestThrottle` (concurrency cap + min delay)
-4. Categories synced from appsettings on every startup (`CategorySync`).
+4. HTTP requests throttled globally via `ScrapeRequestThrottle` (shared across all categories and detail workers)
+5. Categories synced from appsettings on every startup (`CategorySync`).
+
+Only one app instance should scrape in dev/prod — multiple instances with `ScrapeEnabled: true` duplicate HTTP load.
 
 ### Job–category model
 
@@ -80,6 +83,7 @@ flowchart TB
     "ScrapeOnStartup": false,
     "DetailPageDelayMs": 500,
     "DetailFetchConcurrency": 3,
+    "CategoryScrapeConcurrency": 5,
     "ProgressUpdateInterval": 5,
     "DefaultJobsPageSize": 20,
     "MaxJobsPageSize": 100
@@ -96,6 +100,7 @@ flowchart TB
 | `ScrapeIntervalMinutes` | Minutes between scrape ticks (all categories per tick) |
 | `DetailPageDelayMs` | Minimum ms between HTTP request starts (global across all parallel workers) |
 | `DetailFetchConcurrency` | Max parallel detail-page fetches per category (default 3) |
+| `CategoryScrapeConcurrency` | Max categories scraped in parallel per tick (default 5) |
 | `ProgressUpdateInterval` | Update `scrape_runs` counts every N completed jobs (default 5) |
 | `DefaultJobsPageSize` | Default page size for `GET /api/jobs` (default 20) |
 | `MaxJobsPageSize` | Maximum allowed `pageSize` query param (default 100) |
