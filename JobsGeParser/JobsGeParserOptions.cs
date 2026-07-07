@@ -14,6 +14,10 @@ public class JobsGeParserOptions
 
 	public int DetailPageDelayMs { get; set; } = 500;
 
+	public int DetailFetchConcurrency { get; set; } = 3;
+
+	public int ProgressUpdateInterval { get; set; } = 5;
+
 	public IEnumerable<JobCategoryOptions> EnabledCategories =>
 		Categories.Where(c => c.Enabled);
 }

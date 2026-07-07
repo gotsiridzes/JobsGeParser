@@ -38,7 +38,7 @@ JobsGeParser/
 flowchart TB
     Config[appsettings Categories] --> Worker[JobScrapeWorker]
     Worker -->|"per category"| Client[JobsGeClient.ScrapeCategoryAsync]
-    Client --> Repo[Repo.UpsertAsync + LinkJobToCategory]
+    Client --> Repo[Repo.UpsertAndLinkCategoryAsync]
     Repo --> Jobs[(jobs)]
     Repo --> JobCategories[(job_categories)]
     Endpoints[GET api/jobs] --> Repo
@@ -49,10 +49,12 @@ flowchart TB
 1. `JobScrapeWorker` fires on `ScrapeIntervalMinutes`.
 2. For each **enabled category** in config:
    - Start a `scrape_runs` row with `CategorySlug`
-   - `JobsGeClient.ScrapeCategoryAsync` GETs that category's `ListUrl`
-   - For each job: fetch detail, upsert, link to category
-   - Live progress written to `scrape_runs` after each job
-3. Categories synced from appsettings on every startup (`CategorySync`).
+   - `JobsGeClient.ScrapeCategoryAsync` GETs listing, enqueues jobs to a `Channel`
+   - **N parallel consumers** fetch detail pages (bounded by `DetailFetchConcurrency`)
+   - Each consumer uses its own DI scope; `UpsertAndLinkCategoryAsync` in one DB round-trip
+   - Progress written every `ProgressUpdateInterval` jobs (plus final flush)
+3. HTTP requests throttled globally via `ScrapeRequestThrottle` (concurrency cap + min delay)
+4. Categories synced from appsettings on every startup (`CategorySync`).
 
 ### Job–category model
 
@@ -76,7 +78,9 @@ flowchart TB
     "ScrapeEnabled": true,
     "ScrapeIntervalMinutes": 60,
     "ScrapeOnStartup": false,
-    "DetailPageDelayMs": 500
+    "DetailPageDelayMs": 500,
+    "DetailFetchConcurrency": 3,
+    "ProgressUpdateInterval": 5
   }
 }
 ```
@@ -88,7 +92,9 @@ flowchart TB
 | `Categories[].ListUrl` | Relative listing URL on jobs.ge |
 | `ScrapeEnabled` | Kill switch for background scraping |
 | `ScrapeIntervalMinutes` | Minutes between scrape ticks (all categories per tick) |
-| `DetailPageDelayMs` | Delay between detail-page requests |
+| `DetailPageDelayMs` | Minimum ms between HTTP request starts (global across all parallel workers) |
+| `DetailFetchConcurrency` | Max parallel detail-page fetches per category (default 3) |
+| `ProgressUpdateInterval` | Update `scrape_runs` counts every N completed jobs (default 5) |
 
 Add more categories by appending entries with their jobs.ge list URLs.
 
@@ -100,7 +106,7 @@ Base URL (development): `http://localhost:50423`
 
 | Method | Route | Behavior |
 |--------|-------|----------|
-| `GET` | `/api/jobs/categories` | All categories (slug, name, enabled) |
+| `GET` | `/api/jobs/categories` | Categories with `jobCount` and `latestScrapeRun` per slug |
 | `GET` | `/api/jobs/?category={slug}` | Jobs in category (omit `category` for all) |
 | `GET` | `/api/jobs/dotnet?category={slug}` | `.net` title filter + optional category |
 

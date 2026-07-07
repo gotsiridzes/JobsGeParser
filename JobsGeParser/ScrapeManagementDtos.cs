@@ -3,6 +3,14 @@ using JobsGeParser.Workers;
 
 namespace JobsGeParser;
 
+public record CategoryDto(
+	string Slug,
+	string Name,
+	string ListUrl,
+	bool Enabled,
+	int JobCount,
+	ScrapeRunEntity? LatestScrapeRun);
+
 public record ScrapeWorkerStatusDto(
 	bool ScrapeEnabled,
 	int ScrapeIntervalMinutes,

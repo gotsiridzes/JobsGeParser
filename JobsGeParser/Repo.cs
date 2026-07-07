@@ -65,6 +65,59 @@ public class Repo
 		await _db.SaveChangesAsync(ct);
 	}
 
+	public async Task<JobUpsertResult> UpsertAndLinkCategoryAsync(
+		JobApplication job,
+		string categorySlug,
+		CancellationToken ct = default)
+	{
+		var now = DateTimeOffset.UtcNow;
+		var existing = await _db.Jobs.FindAsync([job.Id], ct);
+		JobUpsertResult result;
+
+		if (existing is null)
+		{
+			_db.Jobs.Add(MapToEntity(job, now, now, null));
+			result = JobUpsertResult.Inserted;
+		}
+		else if (HasSameContent(existing, job))
+		{
+			existing.LastSeenAt = now;
+			result = JobUpsertResult.Skipped;
+		}
+		else
+		{
+			existing.Name = job.Name;
+			existing.Link = job.Link;
+			existing.Company = job.Company;
+			existing.CompanyLink = job.CompanyLink;
+			existing.Published = job.Published;
+			existing.EndDate = job.EndDate;
+			existing.Description = job.Description;
+			existing.LastSeenAt = now;
+			existing.UpdatedAt = now;
+			result = JobUpsertResult.Updated;
+		}
+
+		var link = await _db.JobCategories.FindAsync([job.Id, categorySlug], ct);
+		if (link is null)
+		{
+			_db.JobCategories.Add(new JobCategoryEntity
+			{
+				JobId = job.Id,
+				CategorySlug = categorySlug,
+				FirstSeenAt = now,
+				LastSeenAt = now
+			});
+		}
+		else
+		{
+			link.LastSeenAt = now;
+		}
+
+		await _db.SaveChangesAsync(ct);
+		return result;
+	}
+
 	public async Task<IReadOnlyList<JobApplication>> GetJobsAsync(string? categorySlug = null, CancellationToken ct = default)
 	{
 		var query = _db.Jobs.AsQueryable();
@@ -99,10 +152,40 @@ public class Repo
 		return entities.Select(MapToDomain).ToList();
 	}
 
-	public async Task<IReadOnlyList<CategoryEntity>> GetCategoriesAsync(CancellationToken ct = default) =>
-		await _db.Categories
+	public async Task<IReadOnlyList<CategoryDto>> GetCategoriesAsync(CancellationToken ct = default)
+	{
+		var categories = await _db.Categories
+			.AsNoTracking()
 			.OrderBy(c => c.Name)
 			.ToListAsync(ct);
+
+		var jobCounts = await _db.JobCategories
+			.GroupBy(jc => jc.CategorySlug)
+			.Select(g => new { g.Key, Count = g.Count() })
+			.ToDictionaryAsync(x => x.Key, x => x.Count, ct);
+
+		var latestRunIds = await _db.ScrapeRuns
+			.AsNoTracking()
+			.Where(r => r.CategorySlug != null)
+			.GroupBy(r => r.CategorySlug!)
+			.Select(g => g.OrderByDescending(r => r.StartedAt).Select(r => r.Id).First())
+			.ToListAsync(ct);
+
+		var latestRuns = await _db.ScrapeRuns
+			.AsNoTracking()
+			.Where(r => latestRunIds.Contains(r.Id))
+			.ToDictionaryAsync(r => r.CategorySlug!, ct);
+
+		return categories
+			.Select(c => new CategoryDto(
+				c.Slug,
+				c.Name,
+				c.ListUrl,
+				c.Enabled,
+				jobCounts.GetValueOrDefault(c.Slug),
+				latestRuns.GetValueOrDefault(c.Slug)))
+			.ToList();
+	}
 
 	public async Task<ScrapeRunEntity> StartScrapeRunAsync(
 		string categorySlug,

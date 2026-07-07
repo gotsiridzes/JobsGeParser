@@ -23,6 +23,7 @@ public static class Ext
 		self.AddHttpClient("JobsGeClient", c => c.BaseAddress = new Uri(options.BaseUrl));
 
 		self.AddSingleton<ScrapeWorkerState>();
+		self.AddSingleton<ScrapeRequestThrottle>();
 
 		self.AddScoped<JobsGeClient>()
 			.AddSingleton<HtmlProcessor>()
@@ -68,6 +69,12 @@ public static class Ext
 
 		if (self.DetailPageDelayMs < 0)
 			throw new ArgumentOutOfRangeException(nameof(self.DetailPageDelayMs), "Cannot be negative.");
+
+		if (self.DetailFetchConcurrency < 1)
+			throw new ArgumentOutOfRangeException(nameof(self.DetailFetchConcurrency), "Must be at least 1.");
+
+		if (self.ProgressUpdateInterval < 1)
+			throw new ArgumentOutOfRangeException(nameof(self.ProgressUpdateInterval), "Must be at least 1.");
 	}
 
 	private static void ValidateConnectionString(string connectionString)
