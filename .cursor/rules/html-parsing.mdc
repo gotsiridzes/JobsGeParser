@@ -1,0 +1,14 @@
+---
+description: jobs.ge HTML parsing rules
+globs: JobsGeParser/**/{HtmlProcessor,Ext}.cs
+alwaysApply: false
+---
+
+# HTML parsing
+
+- Use HtmlAgilityPack only; keep selectors in HtmlProcessor
+- Listing: div.regularEntries table → tr rows, cells as text|href
+- Detail: #job → table.dtable → 4th tr for description
+- Dates: Georgian month names via Ext.GetDate / GetMonth
+- Verify selectors against live jobs.ge HTML when changing layout logic
+- Job id from link query string: id=
