@@ -1,6 +1,6 @@
 ---
 description: C# style for JobsGeParser
-globs: JobsGeParser/**/*.cs
+globs: backend/JobsGeParser/**/*.cs
 alwaysApply: false
 ---
 
