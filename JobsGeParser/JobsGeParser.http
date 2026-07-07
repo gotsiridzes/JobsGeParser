@@ -1,5 +1,7 @@
 @Api_HostAddress = http://localhost:50423
 
+# --- Job listings ---
+
 GET {{Api_HostAddress}}/api/jobs/categories
 Accept: application/json
 
@@ -15,13 +17,19 @@ Accept: application/json
 
 ###
 
+GET {{Api_HostAddress}}/api/jobs/dotnet
+Accept: application/json
+
+###
+
 GET {{Api_HostAddress}}/api/jobs/dotnet?category=it
 Accept: application/json
 
 ###
 
-### Scrape management — full overview (worker + active + history)
+# --- Scrape management ---
 
+# Dashboard: worker config, active runs, per-category status, recent batches
 GET {{Api_HostAddress}}/api/jobs/scrape/overview
 Accept: application/json
 
@@ -37,6 +45,18 @@ Accept: application/json
 
 ###
 
+# Latest scrape run per category
+GET {{Api_HostAddress}}/api/jobs/scrape/status
+Accept: application/json
+
+###
+
+GET {{Api_HostAddress}}/api/jobs/scrape/status/it
+Accept: application/json
+
+###
+
+# Paginated run history (optional: status, category, batchId)
 GET {{Api_HostAddress}}/api/jobs/scrape/runs?limit=50&offset=0
 Accept: application/json
 
@@ -57,15 +77,11 @@ Accept: application/json
 
 ###
 
+# Recent batches and single-batch detail
 GET {{Api_HostAddress}}/api/jobs/scrape/batches
 Accept: application/json
 
 ###
 
-GET {{Api_HostAddress}}/api/jobs/scrape/status
-Accept: application/json
-
-###
-
-GET {{Api_HostAddress}}/api/jobs/scrape/status/it
+GET {{Api_HostAddress}}/api/jobs/scrape/batches/00000000-0000-0000-0000-000000000000
 Accept: application/json

@@ -30,5 +30,6 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.RegisterJobsEndpoints();
+app.RegisterScrapeEndpoints();
 
 app.Run();
