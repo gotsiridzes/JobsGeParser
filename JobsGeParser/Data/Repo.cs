@@ -18,7 +18,7 @@ public class Repo(JobsDbContext db, JobsGeParserOptions options)
 
 		if (existing is null)
 		{
-			_db.Jobs.Add(MapToEntity(job, now, now, null));
+			_db.Jobs.Add(MapToEntity(job, now, now, null, job.Description is not null ? now : null));
 			await _db.SaveChangesAsync(ct);
 			return JobUpsertResult.Inserted;
 		}
@@ -30,13 +30,10 @@ public class Repo(JobsDbContext db, JobsGeParserOptions options)
 			return JobUpsertResult.Skipped;
 		}
 
-		existing.Name = job.Name;
-		existing.Link = job.Link;
-		existing.Company = job.Company;
-		existing.CompanyLink = job.CompanyLink;
-		existing.Published = job.Published;
-		existing.EndDate = job.EndDate;
+		ApplyMetadata(existing, job);
 		existing.Description = job.Description;
+		if (job.Description is not null)
+			existing.DetailsFetchedAt = now;
 		existing.LastSeenAt = now;
 		existing.UpdatedAt = now;
 		await _db.SaveChangesAsync(ct);
@@ -46,23 +43,61 @@ public class Repo(JobsDbContext db, JobsGeParserOptions options)
 	public async Task LinkJobToCategoryAsync(int jobId, string categorySlug, CancellationToken ct = default)
 	{
 		var now = DateTimeOffset.UtcNow;
-		var link = await _db.JobCategories.FindAsync([jobId, categorySlug], ct);
+		LinkJobToCategory(jobId, categorySlug, now);
+		await _db.SaveChangesAsync(ct);
+	}
 
-		if (link is null)
+	public async Task<MetadataUpsertResult> UpsertMetadataAndLinkCategoryAsync(
+		JobApplication job,
+		string categorySlug,
+		CancellationToken ct = default)
+	{
+		var now = DateTimeOffset.UtcNow;
+		var existing = await _db.Jobs.FindAsync([job.Id], ct);
+		JobUpsertResult result;
+		var needsDetailFetch = false;
+
+		if (existing is null)
 		{
-			_db.JobCategories.Add(new JobCategoryEntity
-			{
-				JobId = jobId,
-				CategorySlug = categorySlug,
-				FirstSeenAt = now,
-				LastSeenAt = now
-			});
+			_db.Jobs.Add(MapToEntity(job, now, now, null, null));
+			result = JobUpsertResult.Inserted;
+			needsDetailFetch = true;
+		}
+		else if (HasSameMetadata(existing, job))
+		{
+			existing.LastSeenAt = now;
+			result = JobUpsertResult.Skipped;
+			needsDetailFetch = existing.DetailsFetchedAt is null;
 		}
 		else
 		{
-			link.LastSeenAt = now;
+			ApplyMetadata(existing, job);
+			existing.LastSeenAt = now;
+			existing.UpdatedAt = now;
+			existing.DetailsFetchedAt = null;
+			result = JobUpsertResult.Updated;
+			needsDetailFetch = true;
 		}
 
+		LinkJobToCategory(existing?.Id ?? job.Id, categorySlug, now);
+		await _db.SaveChangesAsync(ct);
+		return new MetadataUpsertResult(result, needsDetailFetch);
+	}
+
+	public async Task UpsertDescriptionAsync(int jobId, string description, CancellationToken ct = default)
+	{
+		var now = DateTimeOffset.UtcNow;
+		var existing = await _db.Jobs.FindAsync([jobId], ct)
+			?? throw new InvalidOperationException($"Job {jobId} not found.");
+
+		if (existing.Description != description)
+		{
+			existing.Description = description;
+			existing.UpdatedAt = now;
+		}
+
+		existing.DetailsFetchedAt = now;
+		existing.LastSeenAt = now;
 		await _db.SaveChangesAsync(ct);
 	}
 
@@ -77,7 +112,7 @@ public class Repo(JobsDbContext db, JobsGeParserOptions options)
 
 		if (existing is null)
 		{
-			_db.Jobs.Add(MapToEntity(job, now, now, null));
+			_db.Jobs.Add(MapToEntity(job, now, now, null, job.Description is not null ? now : null));
 			result = JobUpsertResult.Inserted;
 		}
 		else if (HasSameContent(existing, job))
@@ -87,34 +122,16 @@ public class Repo(JobsDbContext db, JobsGeParserOptions options)
 		}
 		else
 		{
-			existing.Name = job.Name;
-			existing.Link = job.Link;
-			existing.Company = job.Company;
-			existing.CompanyLink = job.CompanyLink;
-			existing.Published = job.Published;
-			existing.EndDate = job.EndDate;
+			ApplyMetadata(existing, job);
 			existing.Description = job.Description;
+			if (job.Description is not null)
+				existing.DetailsFetchedAt = now;
 			existing.LastSeenAt = now;
 			existing.UpdatedAt = now;
 			result = JobUpsertResult.Updated;
 		}
 
-		var link = await _db.JobCategories.FindAsync([job.Id, categorySlug], ct);
-		if (link is null)
-		{
-			_db.JobCategories.Add(new JobCategoryEntity
-			{
-				JobId = job.Id,
-				CategorySlug = categorySlug,
-				FirstSeenAt = now,
-				LastSeenAt = now
-			});
-		}
-		else
-		{
-			link.LastSeenAt = now;
-		}
-
+		LinkJobToCategory(job.Id, categorySlug, now);
 		await _db.SaveChangesAsync(ct);
 		return result;
 	}
@@ -171,6 +188,7 @@ public class Repo(JobsDbContext db, JobsGeParserOptions options)
 			entity.Published,
 			entity.EndDate,
 			entity.Description,
+			entity.DetailsFetchedAt,
 			entity.FirstSeenAt,
 			entity.LastSeenAt,
 			entity.UpdatedAt,
@@ -259,6 +277,8 @@ public class Repo(JobsDbContext db, JobsGeParserOptions options)
 		int updated,
 		int skipped,
 		int failed,
+		int detailsFetched,
+		int detailsSkipped,
 		CancellationToken ct = default)
 	{
 		var run = await _db.ScrapeRuns.FindAsync([runId], ct);
@@ -269,6 +289,8 @@ public class Repo(JobsDbContext db, JobsGeParserOptions options)
 		run.Updated = updated;
 		run.Skipped = skipped;
 		run.Failed = failed;
+		run.DetailsFetched = detailsFetched;
+		run.DetailsSkipped = detailsSkipped;
 		await _db.SaveChangesAsync(ct);
 	}
 
@@ -282,6 +304,8 @@ public class Repo(JobsDbContext db, JobsGeParserOptions options)
 		run.Updated = result.Updated;
 		run.Skipped = result.Skipped;
 		run.Failed = result.Failed;
+		run.DetailsFetched = result.DetailsFetched;
+		run.DetailsSkipped = result.DetailsSkipped;
 		run.Status = ScrapeRunStatus.Completed;
 		await _db.SaveChangesAsync(ct);
 	}
@@ -432,20 +456,53 @@ public class Repo(JobsDbContext db, JobsGeParserOptions options)
 		return results;
 	}
 
-	private static bool HasSameContent(JobEntity existing, JobApplication job) =>
+	private static bool HasSameMetadata(JobEntity existing, JobApplication job) =>
 		existing.Name == job.Name
 		&& existing.Link == job.Link
 		&& existing.Company == job.Company
 		&& existing.CompanyLink == job.CompanyLink
 		&& existing.Published == job.Published
-		&& existing.EndDate == job.EndDate
+		&& existing.EndDate == job.EndDate;
+
+	private static bool HasSameContent(JobEntity existing, JobApplication job) =>
+		HasSameMetadata(existing, job)
 		&& existing.Description == job.Description;
+
+	private static void ApplyMetadata(JobEntity existing, JobApplication job)
+	{
+		existing.Name = job.Name;
+		existing.Link = job.Link;
+		existing.Company = job.Company;
+		existing.CompanyLink = job.CompanyLink;
+		existing.Published = job.Published;
+		existing.EndDate = job.EndDate;
+	}
+
+	private void LinkJobToCategory(int jobId, string categorySlug, DateTimeOffset now)
+	{
+		var link = _db.JobCategories.Find([jobId, categorySlug]);
+		if (link is null)
+		{
+			_db.JobCategories.Add(new JobCategoryEntity
+			{
+				JobId = jobId,
+				CategorySlug = categorySlug,
+				FirstSeenAt = now,
+				LastSeenAt = now
+			});
+		}
+		else
+		{
+			link.LastSeenAt = now;
+		}
+	}
 
 	private static JobEntity MapToEntity(
 		JobApplication job,
 		DateTimeOffset firstSeenAt,
 		DateTimeOffset lastSeenAt,
-		DateTimeOffset? updatedAt) =>
+		DateTimeOffset? updatedAt,
+		DateTimeOffset? detailsFetchedAt) =>
 		new()
 		{
 			Id = job.Id,
@@ -456,6 +513,7 @@ public class Repo(JobsDbContext db, JobsGeParserOptions options)
 			Published = job.Published,
 			EndDate = job.EndDate,
 			Description = job.Description,
+			DetailsFetchedAt = detailsFetchedAt,
 			FirstSeenAt = firstSeenAt,
 			LastSeenAt = lastSeenAt,
 			UpdatedAt = updatedAt

@@ -18,6 +18,8 @@ public class JobEntity
 
 	public string? Description { get; set; }
 
+	public DateTimeOffset? DetailsFetchedAt { get; set; }
+
 	public DateTimeOffset FirstSeenAt { get; set; }
 
 	public DateTimeOffset LastSeenAt { get; set; }

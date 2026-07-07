@@ -20,7 +20,11 @@ public static class DependencyInjection
 		self.AddDbContext<JobsDbContext>(dbOptions =>
 			dbOptions.UseNpgsql(connectionString));
 
-		self.AddHttpClient("JobsGeClient", c => c.BaseAddress = new Uri(options.BaseUrl));
+		self.AddHttpClient("JobsGeClient", c =>
+		{
+			c.BaseAddress = new Uri(options.BaseUrl);
+			c.Timeout = TimeSpan.FromSeconds(30);
+		});
 
 		self.AddSingleton<ScrapeWorkerState>();
 		self.AddSingleton<ScrapeRequestThrottle>();

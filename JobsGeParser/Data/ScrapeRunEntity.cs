@@ -22,6 +22,10 @@ public class ScrapeRunEntity
 
 	public int Failed { get; set; }
 
+	public int DetailsFetched { get; set; }
+
+	public int DetailsSkipped { get; set; }
+
 	public string Status { get; set; } = null!;
 
 	public string? ErrorMessage { get; set; }

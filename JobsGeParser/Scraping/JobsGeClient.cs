@@ -6,27 +6,15 @@ using JobsGeParser.Models;
 
 namespace JobsGeParser.Scraping;
 
-public class JobsGeClient
+public class JobsGeClient(
+	JobsGeParserOptions ops,
+	IHttpClientFactory httpClientFactory,
+	HtmlProcessor processor,
+	IServiceScopeFactory scopeFactory,
+	ScrapeRequestThrottle throttle,
+	ILogger<JobsGeClient> logger)
 {
-	private readonly HttpClient _client;
-	private readonly JobsGeParserOptions _ops;
-	private readonly HtmlProcessor _processor;
-	private readonly IServiceScopeFactory _scopeFactory;
-	private readonly ScrapeRequestThrottle _throttle;
-
-	public JobsGeClient(
-		JobsGeParserOptions ops,
-		IHttpClientFactory httpClientFactory,
-		HtmlProcessor processor,
-		IServiceScopeFactory scopeFactory,
-		ScrapeRequestThrottle throttle)
-	{
-		_ops = ops;
-		_processor = processor;
-		_scopeFactory = scopeFactory;
-		_throttle = throttle;
-		_client = httpClientFactory.CreateClient("JobsGeClient");
-	}
+	private readonly HttpClient _client = httpClientFactory.CreateClient("JobsGeClient");
 
 	public async Task<ScrapeResult> ScrapeCategoryAsync(
 		long scrapeRunId,
@@ -36,44 +24,91 @@ public class JobsGeClient
 		var stopwatch = Stopwatch.StartNew();
 		var counters = new ScrapeCounters();
 
-		var response = await _throttle.ExecuteAsync(
+		var response = await throttle.ExecuteAsync(
 			() => _client.GetAsync(category.ListUrl, ct),
 			ct);
 		response.EnsureSuccessStatusCode();
 
 		var content = await response.Content.ReadAsStringAsync(ct);
-		var jobs = _processor.ParseHtmlAndGetJobApplicationsList(content).ToList();
+		var jobs = processor.ParseHtmlAndGetJobApplicationsList(content).ToList();
+		var jobsNeedingDetails = new List<JobApplication>(jobs.Count);
 
-		var concurrency = _ops.DetailFetchConcurrency;
-		var channel = Channel.CreateBounded<JobApplication>(concurrency * 4);
-		var progress = new ScrapeProgressReporter(scrapeRunId, _scopeFactory, _ops.ProgressUpdateInterval);
+		if (jobs.Count == 0)
+		{
+			logger.LogWarning(
+				"Listing for {Category} returned no parseable jobs (url={ListUrl}). Page may be empty or HTML structure changed.",
+				category.Slug,
+				category.ListUrl);
+		}
 
-		var consumers = Enumerable.Range(0, concurrency)
-			.Select(_ => ConsumeJobsAsync(channel.Reader, category, counters, progress, ct))
-			.ToArray();
+		using (var discoverScope = scopeFactory.CreateScope())
+		{
+			var repo = discoverScope.ServiceProvider.GetRequiredService<Repo>();
+			foreach (var job in jobs)
+			{
+				try
+				{
+					var metadataResult = await repo.UpsertMetadataAndLinkCategoryAsync(job, category.Slug, ct);
+					counters.RecordMetadata(metadataResult.Result);
+					if (metadataResult.NeedsDetailFetch)
+						jobsNeedingDetails.Add(job);
+					else
+						counters.RecordDetailsSkipped();
+				}
+				catch (Exception ex)
+				{
+					counters.RecordFailed();
+					logger.LogDebug(ex, "Metadata upsert failed for job {JobId} in {Category}.", job.Id, category.Slug);
+				}
+			}
+		}
 
-		foreach (var job in jobs)
-			await channel.Writer.WriteAsync(job, ct);
+		if (jobsNeedingDetails.Count > 0)
+		{
+			var concurrency = ops.DetailFetchConcurrency;
+			var channel = Channel.CreateBounded<JobApplication>(concurrency * 4);
+			var progress = new ScrapeProgressReporter(scrapeRunId, scopeFactory, ops.ProgressUpdateInterval);
 
-		channel.Writer.Complete();
+			var consumers = Enumerable.Range(0, concurrency)
+				.Select(_ => EnrichJobsAsync(channel.Reader, category.Slug, counters, progress, ct))
+				.ToArray();
 
-		await Task.WhenAll(consumers);
+			foreach (var job in jobsNeedingDetails)
+				await channel.Writer.WriteAsync(job, ct);
+
+			channel.Writer.Complete();
+			await Task.WhenAll(consumers);
+		}
 
 		stopwatch.Stop();
 
-		await progress.FlushAsync(counters.Inserted, counters.Updated, counters.Skipped, counters.Failed, ct);
+		using (var flushScope = scopeFactory.CreateScope())
+		{
+			var repo = flushScope.ServiceProvider.GetRequiredService<Repo>();
+			await repo.UpdateScrapeRunProgressAsync(
+				scrapeRunId,
+				counters.Inserted,
+				counters.Updated,
+				counters.Skipped,
+				counters.Failed,
+				counters.DetailsFetched,
+				counters.DetailsSkipped,
+				ct);
+		}
 
 		return new ScrapeResult(
 			counters.Inserted,
 			counters.Updated,
 			counters.Skipped,
 			counters.Failed,
+			counters.DetailsFetched,
+			counters.DetailsSkipped,
 			stopwatch.Elapsed);
 	}
 
-	private async Task ConsumeJobsAsync(
+	private async Task EnrichJobsAsync(
 		ChannelReader<JobApplication> reader,
-		JobCategoryOptions category,
+		string categorySlug,
 		ScrapeCounters counters,
 		ScrapeProgressReporter progress,
 		CancellationToken ct)
@@ -82,25 +117,33 @@ public class JobsGeClient
 		{
 			try
 			{
-				var detailResponse = await _throttle.ExecuteAsync(
+				var detailResponse = await throttle.ExecuteAsync(
 					() => _client.GetAsync(job.Link, ct),
 					ct);
 				detailResponse.EnsureSuccessStatusCode();
 
 				var detailContent = await detailResponse.Content.ReadAsStringAsync(ct);
-				job.SetDescription(_processor.ParseDescription(detailContent));
-
-				using var scope = _scopeFactory.CreateScope();
-				var repo = scope.ServiceProvider.GetRequiredService<Repo>();
-				var result = await repo.UpsertAndLinkCategoryAsync(job, category.Slug, ct);
-				counters.Record(result);
+				var description = processor.TryParseDescription(detailContent);
+				if (description is null)
+				{
+					counters.RecordFailed();
+					logger.LogDebug("Could not parse description for job {JobId} in {Category}.", job.Id, categorySlug);
+				}
+				else
+				{
+					using var scope = scopeFactory.CreateScope();
+					var repo = scope.ServiceProvider.GetRequiredService<Repo>();
+					await repo.UpsertDescriptionAsync(job.Id, description, ct);
+					counters.RecordDetailsFetched();
+				}
 			}
-			catch (Exception)
+			catch (Exception ex)
 			{
 				counters.RecordFailed();
+				logger.LogDebug(ex, "Detail fetch failed for job {JobId} in {Category}.", job.Id, categorySlug);
 			}
 
-			await progress.ReportAsync(counters.Inserted, counters.Updated, counters.Skipped, counters.Failed, ct);
+			await progress.ReportAsync(counters.ToSnapshot(), ct);
 		}
 	}
 
@@ -110,13 +153,17 @@ public class JobsGeClient
 		private int _updated;
 		private int _skipped;
 		private int _failed;
+		private int _detailsFetched;
+		private int _detailsSkipped;
 
 		public int Inserted => _inserted;
 		public int Updated => _updated;
 		public int Skipped => _skipped;
 		public int Failed => _failed;
+		public int DetailsFetched => _detailsFetched;
+		public int DetailsSkipped => _detailsSkipped;
 
-		public void Record(JobUpsertResult result)
+		public void RecordMetadata(JobUpsertResult result)
 		{
 			switch (result)
 			{
@@ -126,6 +173,11 @@ public class JobsGeClient
 			}
 		}
 
+		public void RecordDetailsFetched() => Interlocked.Increment(ref _detailsFetched);
+		public void RecordDetailsSkipped() => Interlocked.Increment(ref _detailsSkipped);
 		public void RecordFailed() => Interlocked.Increment(ref _failed);
+
+		public ScrapeProgressSnapshot ToSnapshot() =>
+			new(Inserted, Updated, Skipped, Failed, DetailsFetched, DetailsSkipped);
 	}
 }

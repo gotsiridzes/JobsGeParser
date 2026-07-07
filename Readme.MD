@@ -63,7 +63,7 @@ JobsGeParser/
 flowchart TB
     Config[appsettings Categories] --> Worker[JobScrapeWorker]
     Worker -->|"N categories in parallel"| Client[JobsGeClient.ScrapeCategoryAsync]
-    Client --> Repo[Repo.UpsertAndLinkCategoryAsync]
+    Client --> Repo[Repo metadata + enrich upserts]
     Repo --> Jobs[(jobs)]
     Repo --> JobCategories[(job_categories)]
     Endpoints[GET api/jobs] --> Repo
@@ -75,10 +75,11 @@ flowchart TB
 2. Enabled categories are enqueued to a bounded `Channel`; **M parallel category consumers** run at once (`CategoryScrapeConcurrency`).
 3. Per category:
    - Start a `scrape_runs` row with `CategorySlug`
-   - `JobsGeClient.ScrapeCategoryAsync` GETs listing, enqueues jobs to a job `Channel`
-   - **N parallel job consumers** fetch detail pages (bounded by `DetailFetchConcurrency`)
-   - Each consumer uses its own DI scope; `UpsertAndLinkCategoryAsync` in one DB round-trip
-   - Progress written every `ProgressUpdateInterval` jobs (plus final flush)
+   - **Discover:** GET listing → parse metadata → `UpsertMetadataAndLinkCategoryAsync` for every row
+   - **Enrich:** only jobs that are new, metadata-changed, or missing `DetailsFetchedAt` are enqueued to a job `Channel`
+   - **N parallel enrich consumers** fetch detail pages (bounded by `DetailFetchConcurrency`) → `UpsertDescriptionAsync`
+   - Progress written every `ProgressUpdateInterval` enriched jobs (plus final flush)
+   - Run counters include `detailsFetched` and `detailsSkipped` (detail HTTP skipped when metadata unchanged)
 4. HTTP requests throttled globally via `ScrapeRequestThrottle` (shared across all categories and detail workers)
 5. Categories synced from appsettings on every startup (`CategorySync`).
 

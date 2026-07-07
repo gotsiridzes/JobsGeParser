@@ -87,13 +87,15 @@ public class JobScrapeWorker(
 				await repo.CompleteScrapeRunAsync(run.Id, result, ct);
 
 				logger.LogInformation(
-					"Scrape completed for {Category} in {Duration}: inserted={Inserted}, updated={Updated}, skipped={Skipped}, failed={Failed}",
+					"Scrape completed for {Category} in {Duration}: inserted={Inserted}, updated={Updated}, skipped={Skipped}, failed={Failed}, detailsFetched={DetailsFetched}, detailsSkipped={DetailsSkipped}",
 					category.Slug,
 					result.Duration,
 					result.Inserted,
 					result.Updated,
 					result.Skipped,
-					result.Failed);
+					result.Failed,
+					result.DetailsFetched,
+					result.DetailsSkipped);
 			}
 			catch (Exception ex)
 			{

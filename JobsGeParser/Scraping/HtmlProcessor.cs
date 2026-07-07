@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-using System.Linq;
 using HtmlAgilityPack;
 using JobsGeParser.Models;
 
@@ -11,68 +9,116 @@ public class HtmlProcessor
 	{
 		var htmlDocument = new HtmlDocument();
 		htmlDocument.LoadHtml(document);
-
 		return htmlDocument;
 	}
 
-	private IEnumerable<IEnumerable<string>> ParseHtmlDocument(HtmlDocument document)
+	private static IEnumerable<IReadOnlyList<string>> ParseListingRows(HtmlDocument document)
 	{
-		var table = document.DocumentNode
-			.SelectSingleNode($"//html//body//div[@class='regularEntries']//table")
-			.Descendants("tr")
-			.Skip(1)
-			.Where(tr => tr.Elements("td").Count() > 1)
-			.Select(tr => tr.Elements("td").Select(td =>
-			{
-				var text = td.InnerText.Trim();
-				var links = td.SelectNodes("a");
-				var linkValue = string.Empty;
-				if (links != null)
-					linkValue = links[0].Attributes[0].Value;
+		var tableNode = document.DocumentNode
+			.SelectSingleNode("//html//body//div[@class='regularEntries']//table");
 
-				return string.IsNullOrEmpty(text) ? null : string.Concat(text, "|", linkValue).TrimEnd('|');
-			}).Where(x => !string.IsNullOrEmpty(x)).ToList())
-			.ToList();
+		if (tableNode is null)
+			yield break;
 
-		return table;
+		foreach (var tr in tableNode.Descendants("tr").Skip(1))
+		{
+			if (tr.Elements("td").Count() <= 1)
+				continue;
+
+			var cells = tr.Elements("td")
+				.Select(ParseCell)
+				.Where(x => x is not null)
+				.Cast<string>()
+				.ToList();
+
+			if (cells.Count >= 4)
+				yield return cells;
+		}
+	}
+
+	private static string? ParseCell(HtmlNode td)
+	{
+		var text = td.InnerText.Trim();
+		if (string.IsNullOrEmpty(text))
+			return null;
+
+		var link = td.SelectSingleNode(".//a");
+		var linkValue = link?.GetAttributeValue("href", string.Empty) ?? string.Empty;
+		return string.IsNullOrEmpty(linkValue)
+			? text
+			: string.Concat(text, "|", linkValue);
 	}
 
 	public IEnumerable<JobApplication> ParseHtmlAndGetJobApplicationsList(string content)
 	{
 		var document = LoadDocument(content);
 
-		var table = ParseHtmlDocument(document);
-
-		foreach (var row in table)
+		foreach (var row in ParseListingRows(document))
 		{
-			var nameAndLink = row.ElementAt(0).Split('|');
-			var companyAndLink = row.ElementAt(1).Split('|');
-			int id = int.Parse(nameAndLink[1].Split("id=")[1]);
+			var job = TryParseJobRow(row);
+			if (job is not null)
+				yield return job;
+		}
+	}
+
+	private static JobApplication? TryParseJobRow(IReadOnlyList<string> row)
+	{
+		try
+		{
+			var nameAndLink = row[0].Split('|');
+			var companyAndLink = row[1].Split('|');
+
+			if (nameAndLink.Length < 2 || !TryExtractJobId(nameAndLink[1], out var id))
+				return null;
 
 			var application = new JobApplication(
 				id,
 				nameAndLink[0],
 				companyAndLink[0],
-				row.ElementAt(2).GetDate(),
-				row.ElementAt(3).GetDate());
+				row[2].GetDate(),
+				row[3].GetDate());
 
 			application.SetLink(nameAndLink[1]);
 			application.SetCompanyLink(companyAndLink.Length == 1 ? null : companyAndLink[1]);
-
-			yield return application;
+			return application;
+		}
+		catch
+		{
+			return null;
 		}
 	}
 
-	public string ParseDescription(string content)
+	private static bool TryExtractJobId(string link, out int id)
+	{
+		id = 0;
+		var idMarker = "id=";
+		var index = link.IndexOf(idMarker, StringComparison.OrdinalIgnoreCase);
+		if (index < 0)
+			return false;
+
+		var idPart = link[(index + idMarker.Length)..];
+		var end = idPart.IndexOfAny(['&', '#', ' ']);
+		if (end >= 0)
+			idPart = idPart[..end];
+
+		return int.TryParse(idPart, out id);
+	}
+
+	public string? TryParseDescription(string content)
 	{
 		var document = LoadDocument(content);
+		var jobNode = document.GetElementbyId("job");
+		if (jobNode is null)
+			return null;
 
-		return document
-			.GetElementbyId("job")
-			.SelectSingleNode("//table[@class='dtable']")
-			.Descendants("tr")
-			.ElementAt(3)
-			.InnerText
-			.Trim();
+		var table = jobNode.SelectSingleNode(".//table[@class='dtable']");
+		if (table is null)
+			return null;
+
+		var rows = table.Descendants("tr").ToList();
+		if (rows.Count <= 3)
+			return null;
+
+		return rows[3].InnerText.Trim();
 	}
 }

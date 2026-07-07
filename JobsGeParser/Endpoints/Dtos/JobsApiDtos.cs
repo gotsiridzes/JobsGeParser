@@ -21,6 +21,7 @@ public record JobDetailDto(
 	DateOnly Published,
 	DateOnly EndDate,
 	string? Description,
+	DateTimeOffset? DetailsFetchedAt,
 	DateTimeOffset FirstSeenAt,
 	DateTimeOffset LastSeenAt,
 	DateTimeOffset? UpdatedAt,
