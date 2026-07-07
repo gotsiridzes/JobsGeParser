@@ -44,7 +44,7 @@ public class JobScrapeWorker(
 
 			try
 			{
-				var result = await client.ScrapeAsync(ct);
+				var result = await client.ScrapeAsync(run.Id, ct);
 				await repo.CompleteScrapeRunAsync(run.Id, result, ct);
 
 				logger.LogInformation(

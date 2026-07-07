@@ -21,7 +21,7 @@ public class JobsGeClient
 		_client = httpClientFactory.CreateClient("JobsGeClient");
 	}
 
-	public async Task<ScrapeResult> ScrapeAsync(CancellationToken ct = default)
+	public async Task<ScrapeResult> ScrapeAsync(long scrapeRunId, CancellationToken ct = default)
 	{
 		var stopwatch = Stopwatch.StartNew();
 		var inserted = 0;
@@ -59,6 +59,8 @@ public class JobsGeClient
 			{
 				failed++;
 			}
+
+			await _repo.UpdateScrapeRunProgressAsync(scrapeRunId, inserted, updated, skipped, failed, ct);
 
 			if (_ops.DetailPageDelayMs > 0)
 				await Task.Delay(_ops.DetailPageDelayMs, ct);

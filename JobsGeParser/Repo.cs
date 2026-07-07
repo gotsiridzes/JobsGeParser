@@ -73,6 +73,25 @@ public class Repo
 		return run;
 	}
 
+	public async Task UpdateScrapeRunProgressAsync(
+		long runId,
+		int inserted,
+		int updated,
+		int skipped,
+		int failed,
+		CancellationToken ct = default)
+	{
+		var run = await _db.ScrapeRuns.FindAsync([runId], ct);
+		if (run is null || run.Status != ScrapeRunStatus.Running)
+			return;
+
+		run.Inserted = inserted;
+		run.Updated = updated;
+		run.Skipped = skipped;
+		run.Failed = failed;
+		await _db.SaveChangesAsync(ct);
+	}
+
 	public async Task CompleteScrapeRunAsync(long runId, ScrapeResult result, CancellationToken ct = default)
 	{
 		var run = await _db.ScrapeRuns.FindAsync([runId], ct)
