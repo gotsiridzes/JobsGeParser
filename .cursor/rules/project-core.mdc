@@ -19,3 +19,11 @@ alwaysApply: true
 - DbContext and Repo are scoped; use IServiceScopeFactory in hosted services
 - Frontend dashboard lives in `frontend/`: separate npm project, not in the .sln
 - Do not add backup .csproj files or unrelated CI workflows
+
+## Verification after changes
+
+- After code changes, **build only**. Do not start long-running dev servers unless the user explicitly asks.
+- Backend: `dotnet build backend/JobsGeParser/JobsGeParser.csproj`
+- Frontend (when touched): `cd frontend && npm run build`
+- Do not run `dotnet run`, `npm run dev`, or scrape workers to "verify" edits. Builds are sufficient and avoid draining resources.
+- Live HTTP checks (`JobsGeParser.http`, browser, scrape overview) are for manual testing by the user, not a default agent step.

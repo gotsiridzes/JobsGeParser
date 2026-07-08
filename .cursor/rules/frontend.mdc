@@ -11,3 +11,4 @@ globs: frontend/**/*
 - Dev proxy: `/api` → `http://localhost:50423` in `frontend/vite.config.ts`
 - Pages in `frontend/src/pages/`; shared components in `frontend/src/components/`
 - Do not add write endpoints or auth in v1 — UI is read-only against existing API
+- After changes: `npm run build` is sufficient. Do not start `npm run dev` unless the user asks.

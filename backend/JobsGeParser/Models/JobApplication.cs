@@ -5,12 +5,14 @@ public class JobApplication
 	public JobApplication(
 		int id,
 		string name,
+		string link,
 		string company,
 		DateOnly published,
 		DateOnly endDate)
 	{
 		Id = id;
 		Name = name;
+		Link = link;
 		Company = company;
 		Published = published;
 		EndDate = endDate;
@@ -33,8 +35,6 @@ public class JobApplication
 	public string? Description { get; private set; }
 
 	public void SetDescription(string description) => Description = description;
-
-	public void SetLink(string link) => Link = link;
 
 	public void SetCompanyLink(string? companyLink) => CompanyLink = companyLink;
 }
