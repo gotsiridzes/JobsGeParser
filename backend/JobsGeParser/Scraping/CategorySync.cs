@@ -9,9 +9,12 @@ public static class CategorySync
 	public static async Task SyncAsync(
 		JobsDbContext db,
 		JobsGeParserOptions options,
+		ILogger logger,
 		CancellationToken ct = default)
 	{
 		var configSlugs = options.Categories.Select(c => c.Slug).ToHashSet(StringComparer.OrdinalIgnoreCase);
+		var added = 0;
+		var updated = 0;
 
 		foreach (var category in options.Categories)
 		{
@@ -25,12 +28,14 @@ public static class CategorySync
 					ListUrl = category.ListUrl,
 					Enabled = category.Enabled
 				});
+				added++;
 			}
 			else
 			{
 				existing.Name = category.Name;
 				existing.ListUrl = category.ListUrl;
 				existing.Enabled = category.Enabled;
+				updated++;
 			}
 		}
 
@@ -43,12 +48,29 @@ public static class CategorySync
 
 		await db.SaveChangesAsync(ct);
 
-		await BackfillJobsToCategoryAsync(db, "it", ct);
+		var enabledCount = options.Categories.Count(c => c.Enabled);
+		logger.LogInformation(
+			"Category sync complete — {Total} in config ({Enabled} enabled), {Added} added, {Updated} updated, {Disabled} disabled (removed from config)",
+			options.Categories.Count,
+			enabledCount,
+			added,
+			updated,
+			removed.Count);
+
+		if (removed.Count > 0)
+		{
+			logger.LogWarning(
+				"Categories no longer in configuration were disabled: {Slugs}",
+				string.Join(", ", removed.Select(c => c.Slug)));
+		}
+
+		await BackfillJobsToCategoryAsync(db, "it", logger, ct);
 	}
 
 	private static async Task BackfillJobsToCategoryAsync(
 		JobsDbContext db,
 		string categorySlug,
+		ILogger logger,
 		CancellationToken ct)
 	{
 		if (!await db.Categories.AnyAsync(c => c.Slug == categorySlug, ct))
@@ -75,5 +97,10 @@ public static class CategorySync
 		}
 
 		await db.SaveChangesAsync(ct);
+
+		logger.LogInformation(
+			"Backfilled {JobCount} jobs without a category to {CategorySlug}",
+			jobIdsWithoutCategory.Count,
+			categorySlug);
 	}
 }

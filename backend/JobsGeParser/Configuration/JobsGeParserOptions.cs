@@ -22,7 +22,17 @@ public class JobsGeParserOptions
 
 	public int DefaultJobsPageSize { get; set; } = 20;
 
-	public int MaxJobsPageSize { get; set; } = 100;
+	public int MaxJobsPageSize
+	{
+		get;
+		set
+		{
+			if (value < 1)
+				throw new ArgumentOutOfRangeException(nameof(MaxJobsPageSize), "Must be at least 1.");
+
+			field = value;
+		}
+	} = 100;
 
 	public IEnumerable<JobCategoryOptions> EnabledCategories =>
 		Categories.Where(c => c.Enabled);

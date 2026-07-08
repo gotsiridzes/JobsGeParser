@@ -4,7 +4,7 @@ Monorepo for scraping [jobs.ge](https://jobs.ge/) listings and monitoring scrape
 
 | Project | Folder | Stack |
 |---------|--------|-------|
-| **API & scraper** | [`backend/`](backend/) | .NET 8, EF Core, PostgreSQL, background worker |
+| **API & scraper** | [`backend/`](backend/) | .NET 10, EF Core, PostgreSQL, background worker |
 | **Dashboard UI** | [`frontend/`](frontend/) | Vite, React, TypeScript, TanStack Query |
 
 Shared at repo root: [`docs/`](docs/) (backend implementation plans), [`.cursor/`](.cursor/) (AI rules & skills), [`.github/`](.github/) (CI).
@@ -34,6 +34,7 @@ npm run dev
 |-----|-------|
 | [backend/README.md](backend/README.md) | Architecture, API endpoints, configuration, migrations |
 | [frontend/README.md](frontend/README.md) | UI routes, build, dev proxy |
+| [docs/roadmap.md](docs/roadmap.md) | Product roadmap — search, facets, alerts (next phase) |
 | [docs/plans/](docs/plans/) | Backend implementation plan archive |
 | [AGENTS.md](AGENTS.md) | Cursor / AI assistant entry point |
 

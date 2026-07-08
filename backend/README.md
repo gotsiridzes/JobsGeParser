@@ -6,12 +6,14 @@ A minimal ASP.NET Core API that scrapes [jobs.ge](https://jobs.ge/) job listings
 
 | Layer | Choice |
 |-------|--------|
-| Runtime | .NET 8 (`net8.0`) |
+| Runtime | .NET 10 (`net10.0`), C# 14 |
 | API style | Minimal hosting (`WebApplication`) + extension methods |
 | HTML parsing | [HtmlAgilityPack](https://html-agility-pack.net/) 1.11.x |
-| Storage | PostgreSQL via EF Core 8 + Npgsql |
+| Storage | PostgreSQL via EF Core 10 + Npgsql |
 | Background jobs | `BackgroundService` (`JobScrapeWorker`) |
 | CI | GitHub Actions — `dotnet publish` on `master` |
+
+Requires [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0). Repo root [`global.json`](../global.json) pins the SDK version.
 
 ## Solution layout
 
@@ -101,12 +103,16 @@ Only one app instance should scrape in dev/prod — multiple instances with `Scr
     "ProgressUpdateInterval": 5,
     "DefaultJobsPageSize": 20,
     "MaxJobsPageSize": 100
+  },
+  "Cors": {
+    "AllowedOrigins": [ "http://localhost:5173" ]
   }
 }
 ```
 
 | Setting | Purpose |
 |---------|---------|
+| `Cors.AllowedOrigins` | Browser origins allowed for cross-origin API requests; empty array disables CORS middleware |
 | `Categories` | List of scrape targets (slug, name, list URL, enabled) |
 | `Categories[].Slug` | Stable key for filtering (e.g. `it`) |
 | `Categories[].ListUrl` | Relative listing URL on jobs.ge |
@@ -170,6 +176,8 @@ dotnet run --project JobsGeParser/JobsGeParser.csproj
 
 Set PostgreSQL connection string in `JobsGeParser/appsettings.Development.json`.
 
+In Development, OpenAPI 3.1 document is served at `GET /openapi/v1.json`.
+
 ### Dashboard UI
 
 The React dashboard is in [`../frontend/`](../frontend/). Start it separately:
@@ -185,7 +193,7 @@ Open `http://localhost:5173`. See [frontend/README.md](../frontend/README.md).
 **Production hosting (optional):**
 
 - **Single host:** Build with `cd frontend && npm run build`, copy `frontend/dist` to `JobsGeParser/wwwroot`, and add `UseStaticFiles` + `MapFallbackToFile` in `Program.cs`
-- **Separate host:** Add a CORS policy in `Configuration/DependencyInjection.cs` for the UI origin
+- **Separate host:** Add the UI origin to `Cors.AllowedOrigins` in appsettings (default includes `http://localhost:5173` for Vite dev)
 
 ## Plans
 

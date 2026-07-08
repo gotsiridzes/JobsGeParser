@@ -2,29 +2,41 @@ using System.Threading.Channels;
 using JobsGeParser.Configuration;
 using JobsGeParser.Data;
 using JobsGeParser.Scraping;
+using Microsoft.Extensions.Options;
 
 namespace JobsGeParser.Workers;
 
 public class JobScrapeWorker(
-	JobsGeParserOptions options,
+	IOptions<JobsGeParserOptions> options,
 	IServiceScopeFactory scopeFactory,
 	ScrapeWorkerState workerState,
 	ILogger<JobScrapeWorker> logger) : BackgroundService
 {
+	private readonly JobsGeParserOptions _options = options.Value;
 	private readonly SemaphoreSlim _scrapeLock = new(1, 1);
 
 	protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 	{
-		if (!options.ScrapeEnabled)
+		if (!_options.ScrapeEnabled)
 		{
-			logger.LogInformation("Job scraping is disabled.");
+			logger.LogInformation("Scrape worker not started: scraping is disabled in configuration");
 			return;
 		}
 
-		using var timer = new PeriodicTimer(TimeSpan.FromMinutes(options.ScrapeIntervalMinutes));
+		logger.LogInformation(
+			"Scrape worker started: interval {IntervalMinutes} min, {CategoryCount} enabled categories, category concurrency {CategoryConcurrency}, detail concurrency {DetailConcurrency}",
+			_options.ScrapeIntervalMinutes,
+			_options.EnabledCategories.Count(),
+			_options.CategoryScrapeConcurrency,
+			_options.DetailFetchConcurrency);
 
-		if (options.ScrapeOnStartup)
+		using var timer = new PeriodicTimer(TimeSpan.FromMinutes(_options.ScrapeIntervalMinutes));
+
+		if (_options.ScrapeOnStartup)
+		{
+			logger.LogInformation("Running scrape on startup");
 			await RunScrapeAsync(stoppingToken);
+		}
 
 		while (await timer.WaitForNextTickAsync(stoppingToken))
 			await RunScrapeAsync(stoppingToken);
@@ -40,13 +52,18 @@ public class JobScrapeWorker(
 		}
 
 		var batchId = Guid.NewGuid();
-		var categories = options.EnabledCategories.ToList();
+		var categories = _options.EnabledCategories.ToList();
+
+		logger.LogInformation(
+			"Starting scrape batch {BatchId}: {CategoryCount} categories",
+			batchId,
+			categories.Count);
 
 		workerState.BeginTick(batchId, categories.Select(c => c.Slug).ToList());
 
 		try
 		{
-			var concurrency = options.CategoryScrapeConcurrency;
+			var concurrency = _options.CategoryScrapeConcurrency;
 			var channel = Channel.CreateBounded<JobCategoryOptions>(concurrency * 2);
 
 			var consumers = Enumerable.Range(0, concurrency)
@@ -59,6 +76,8 @@ public class JobScrapeWorker(
 			channel.Writer.Complete();
 
 			await Task.WhenAll(consumers);
+
+			logger.LogInformation("Scrape batch {BatchId} finished", batchId);
 		}
 		finally
 		{
@@ -80,6 +99,12 @@ public class JobScrapeWorker(
 
 			var run = await repo.StartScrapeRunAsync(category.Slug, batchId, ct);
 			workerState.BeginCategory(category.Slug, run.Id);
+
+			logger.LogInformation(
+				"Scrape run {RunId} started for category {Category} (batch {BatchId})",
+				run.Id,
+				category.Slug,
+				batchId);
 
 			try
 			{
