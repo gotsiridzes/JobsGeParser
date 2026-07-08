@@ -1,0 +1,29 @@
+---
+description: Writing style - no em dashes in prose, comments, docs, or UI copy
+alwaysApply: true
+---
+
+# Writing style
+
+Do not use em dashes (Unicode U+2014, `—`) anywhere in this project.
+
+This applies to:
+
+- Code comments and docstrings
+- README, plans, roadmap, and other markdown docs
+- Commit messages and PR descriptions
+- UI strings, labels, and placeholders
+- Chat responses when discussing this project
+
+Use one of these instead:
+
+| Instead of em dash | Use |
+|--------------------|-----|
+| Parenthetical aside | Commas or parentheses |
+| Clause break | Period or semicolon |
+| Label or title separator | Colon (`Phase 1: Search`) or hyphen with spaces (`Phase 1 - Search`) |
+| Range | En dash only for numeric/date ranges if needed (`2026-07-08`), or words (`weeks 1 to 4`) |
+
+Hyphen-minus (`-`) in code identifiers, CLI flags, and markdown list bullets is fine. The ban is specifically on the em dash character in running text.
+
+Before finishing edits, scan changed files for `—` and replace with an allowed alternative.

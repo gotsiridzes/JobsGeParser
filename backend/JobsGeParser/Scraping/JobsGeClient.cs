@@ -3,17 +3,19 @@ using System.Threading.Channels;
 using JobsGeParser.Configuration;
 using JobsGeParser.Data;
 using JobsGeParser.Models;
+using Microsoft.Extensions.Options;
 
 namespace JobsGeParser.Scraping;
 
 public class JobsGeClient(
-	JobsGeParserOptions ops,
+	IOptions<JobsGeParserOptions> options,
 	IHttpClientFactory httpClientFactory,
 	HtmlProcessor processor,
 	IServiceScopeFactory scopeFactory,
 	ScrapeRequestThrottle throttle,
 	ILogger<JobsGeClient> logger)
 {
+	private readonly JobsGeParserOptions _ops = options.Value;
 	private readonly HttpClient _client = httpClientFactory.CreateClient("JobsGeClient");
 
 	public async Task<ScrapeResult> ScrapeCategoryAsync(
@@ -23,6 +25,11 @@ public class JobsGeClient(
 	{
 		var stopwatch = Stopwatch.StartNew();
 		var counters = new ScrapeCounters();
+
+		logger.LogInformation(
+			"Fetching listing for {Category} (run {RunId})",
+			category.Slug,
+			scrapeRunId);
 
 		var response = await throttle.ExecuteAsync(
 			() => _client.GetAsync(category.ListUrl, ct),
@@ -58,16 +65,30 @@ public class JobsGeClient(
 				catch (Exception ex)
 				{
 					counters.RecordFailed();
-					logger.LogDebug(ex, "Metadata upsert failed for job {JobId} in {Category}.", job.Id, category.Slug);
+					logger.LogWarning(
+						ex,
+						"Metadata upsert failed for job {JobId} in {Category}",
+						job.Id,
+						category.Slug);
 				}
 			}
 		}
 
+		logger.LogInformation(
+			"Category {Category}: {JobCount} jobs on listing — inserted={Inserted}, updated={Updated}, skipped={Skipped}, failed={Failed}, {NeedingDetails} need detail fetch",
+			category.Slug,
+			jobs.Count,
+			counters.Inserted,
+			counters.Updated,
+			counters.Skipped,
+			counters.Failed,
+			jobsNeedingDetails.Count);
+
 		if (jobsNeedingDetails.Count > 0)
 		{
-			var concurrency = ops.DetailFetchConcurrency;
+			var concurrency = _ops.DetailFetchConcurrency;
 			var channel = Channel.CreateBounded<JobApplication>(concurrency * 4);
-			var progress = new ScrapeProgressReporter(scrapeRunId, scopeFactory, ops.ProgressUpdateInterval);
+			var progress = new ScrapeProgressReporter(scrapeRunId, scopeFactory, _ops.ProgressUpdateInterval);
 
 			var consumers = Enumerable.Range(0, concurrency)
 				.Select(_ => EnrichJobsAsync(channel.Reader, category.Slug, counters, progress, ct))
@@ -127,7 +148,10 @@ public class JobsGeClient(
 				if (description is null)
 				{
 					counters.RecordFailed();
-					logger.LogDebug("Could not parse description for job {JobId} in {Category}.", job.Id, categorySlug);
+					logger.LogWarning(
+						"Could not parse description for job {JobId} in {Category}",
+						job.Id,
+						categorySlug);
 				}
 				else
 				{
@@ -140,7 +164,11 @@ public class JobsGeClient(
 			catch (Exception ex)
 			{
 				counters.RecordFailed();
-				logger.LogDebug(ex, "Detail fetch failed for job {JobId} in {Category}.", job.Id, categorySlug);
+				logger.LogWarning(
+					ex,
+					"Detail fetch failed for job {JobId} in {Category}",
+					job.Id,
+					categorySlug);
 			}
 
 			await progress.ReportAsync(counters.ToSnapshot(), ct);

@@ -14,6 +14,7 @@ description: Adds or modifies JobsGeParser minimal API endpoints under api/jobs/
 5. Return `Results.Ok(...)` for JSON responses
 6. Add entry to `backend/JobsGeParser/JobsGeParser.http` for manual test
 7. Update `backend/README.md` API table if behavior is user-facing
+8. Verify with `dotnet build backend/JobsGeParser/JobsGeParser.csproj`. Do not run the API unless the user asks.
 
 ## Template
 

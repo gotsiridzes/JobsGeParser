@@ -74,11 +74,11 @@ public class HtmlProcessor
 			var application = new JobApplication(
 				id,
 				nameAndLink[0],
+				nameAndLink[1],
 				companyAndLink[0],
 				row[2].GetDate(),
 				row[3].GetDate());
 
-			application.SetLink(nameAndLink[1]);
 			application.SetCompanyLink(companyAndLink.Length == 1 ? null : companyAndLink[1]);
 			return application;
 		}

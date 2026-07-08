@@ -3,13 +3,14 @@ using JobsGeParser.Endpoints.Dtos;
 using JobsGeParser.Models;
 using JobsGeParser.Workers;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace JobsGeParser.Data;
 
-public class Repo(JobsDbContext db, JobsGeParserOptions options)
+public class Repo(JobsDbContext db, IOptions<JobsGeParserOptions> options)
 {
 	private readonly JobsDbContext _db = db;
-	private readonly JobsGeParserOptions _options = options;
+	private readonly JobsGeParserOptions _options = options.Value;
 
 	public async Task<JobUpsertResult> UpsertAsync(JobApplication job, CancellationToken ct = default)
 	{

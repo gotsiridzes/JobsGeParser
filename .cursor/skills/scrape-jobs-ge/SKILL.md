@@ -26,7 +26,7 @@ description: Modifies jobs.ge scraping, HtmlAgilityPack selectors, or JobsGeClie
 2. Update selectors in `Scraping/HtmlProcessor` only
 3. Add new categories in appsettings `Categories` array with slug, name, listUrl
 4. Tune `CategoryScrapeConcurrency`, `DetailFetchConcurrency`, and `DetailPageDelayMs` for jobs.ge rate limits
-5. Verify via `GET /api/jobs/scrape/overview` and `GET /api/jobs?category={slug}`
+5. Verify with `dotnet build backend/JobsGeParser/JobsGeParser.csproj`. Live scrape checks (`GET /api/jobs/scrape/overview`, etc.) are manual only unless the user asks to run the app.
 
 ## Scrape flow (two-level parallelism)
 

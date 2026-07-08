@@ -5,16 +5,25 @@ alwaysApply: true
 
 # JobsGeParser core
 
-- Single .NET 8 minimal API in `backend/JobsGeParser/`; solution at `backend/JobsGeParser.sln`
+- Single .NET 10 minimal API in `backend/JobsGeParser/`; solution at `backend/JobsGeParser.sln`; SDK pinned in repo root `global.json`
 - Read `backend/README.md` before structural changes
-- DI: register in `Configuration/DependencyInjection.AddJobsGeService`; keep Program.cs thin
+- DI: register in `Configuration/DependencyInjection.AddJobsGeService`; keep Program.cs thin; options via `IOptions<T>` + `ValidateOnStart`
+- CORS: config-driven `Cors:AllowedOrigins` in appsettings, policy `"Frontend"` in DI
 - Endpoints: `JobsGeParser.Endpoints`, MapGroup("api/jobs/"), extension `RegisterJobsEndpoints`
 - Parsing in `Scraping/HtmlProcessor`; HTTP in `Scraping/JobsGeClient`; storage in `Data/Repo` (PostgreSQL via EF Core)
 - Categories defined in appsettings JobsGeParserOptions.Categories (slug, name, listUrl, enabled)
-- CategorySync runs on startup — syncs categories table from config
-- Scraping runs via JobScrapeWorker — one scrape run per enabled category per tick
+- CategorySync runs on startup: syncs categories table from config
+- Scraping runs via JobScrapeWorker: one scrape run per enabled category per tick
 - Upsert by jobs.ge Id; link jobs to categories via job_categories many-to-many
 - Respect DetailPageDelayMs between detail-page requests
 - DbContext and Repo are scoped; use IServiceScopeFactory in hosted services
-- Frontend dashboard lives in `frontend/` — separate npm project, not in the .sln
+- Frontend dashboard lives in `frontend/`: separate npm project, not in the .sln
 - Do not add backup .csproj files or unrelated CI workflows
+
+## Verification after changes
+
+- After code changes, **build only**. Do not start long-running dev servers unless the user explicitly asks.
+- Backend: `dotnet build backend/JobsGeParser/JobsGeParser.csproj`
+- Frontend (when touched): `cd frontend && npm run build`
+- Do not run `dotnet run`, `npm run dev`, or scrape workers to "verify" edits. Builds are sufficient and avoid draining resources.
+- Live HTTP checks (`JobsGeParser.http`, browser, scrape overview) are for manual testing by the user, not a default agent step.
