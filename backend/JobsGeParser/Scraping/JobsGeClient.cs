@@ -144,8 +144,8 @@ public class JobsGeClient(
 				detailResponse.EnsureSuccessStatusCode();
 
 				var detailContent = await detailResponse.Content.ReadAsStringAsync(ct);
-				var description = processor.TryParseDescription(detailContent);
-				if (description is null)
+				var parsed = processor.TryParseDescriptionDetail(detailContent);
+				if (parsed is null)
 				{
 					counters.RecordFailed();
 					logger.LogWarning(
@@ -157,7 +157,7 @@ public class JobsGeClient(
 				{
 					using var scope = scopeFactory.CreateScope();
 					var repo = scope.ServiceProvider.GetRequiredService<Repo>();
-					await repo.UpsertDescriptionAsync(job.Id, description, ct);
+					await repo.UpsertDescriptionAsync(job.Id, parsed.Text, parsed.Html, ct);
 					counters.RecordDetailsFetched();
 				}
 			}

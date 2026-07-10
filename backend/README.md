@@ -11,7 +11,7 @@ A minimal ASP.NET Core API that scrapes [jobs.ge](https://jobs.ge/) job listings
 | HTML parsing | [HtmlAgilityPack](https://html-agility-pack.net/) 1.11.x |
 | Storage | PostgreSQL via EF Core 10 + Npgsql |
 | Background jobs | `BackgroundService` (`JobScrapeWorker`) |
-| CI | GitHub Actions — `dotnet publish` on `master` |
+| CI | GitHub Actions - `dotnet publish` on `master` |
 
 Requires [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0). Repo root [`global.json`](../global.json) pins the SDK version.
 
@@ -23,13 +23,15 @@ This folder is the **backend** project. The React dashboard lives in [`../fronte
 backend/
 ├── JobsGeParser.sln
 ├── README.md                 # this file
-└── JobsGeParser/
-    ├── Program.cs
-    ├── Configuration/
-    ├── Data/
-    ├── Scraping/
-    ├── Workers/
-    └── Endpoints/
+├── JobsGeParser/
+│   ├── Program.cs
+│   ├── Configuration/
+│   ├── Data/
+│   ├── Enrichment/
+│   ├── Scraping/
+│   ├── Workers/
+│   └── Endpoints/
+└── JobsGeParser.Tests/
 ```
 
 Full monorepo layout:
@@ -57,6 +59,7 @@ flowchart TB
     Repo --> Jobs[(jobs)]
     Repo --> JobCategories[(job_categories)]
     Endpoints[GET api/jobs] --> Repo
+    Search[GET api/search] --> Repo
 ```
 
 ### Scrape flow
@@ -67,17 +70,17 @@ flowchart TB
    - Start a `scrape_runs` row with `CategorySlug`
    - **Discover:** GET listing → parse metadata → `UpsertMetadataAndLinkCategoryAsync` for every row
    - **Enrich:** only jobs that are new, metadata-changed, or missing `DetailsFetchedAt` are enqueued to a job `Channel`
-   - **N parallel enrich consumers** fetch detail pages (bounded by `DetailFetchConcurrency`) → `UpsertDescriptionAsync`
+   - **N parallel enrich consumers** fetch detail pages (bounded by `DetailFetchConcurrency`) → `UpsertDescriptionAsync` (plain text + HTML) → structured enrichment
    - Progress written every `ProgressUpdateInterval` enriched jobs (plus final flush)
    - Run counters include `detailsFetched` and `detailsSkipped` (detail HTTP skipped when metadata unchanged)
 4. HTTP requests throttled globally via `ScrapeRequestThrottle` (shared across all categories and detail workers)
 5. Categories synced from appsettings on every startup (`CategorySync`).
 
-Only one app instance should scrape in dev/prod — multiple instances with `ScrapeEnabled: true` duplicate HTTP load.
+Only one app instance should scrape in dev/prod - multiple instances with `ScrapeEnabled: true` duplicate HTTP load.
 
 ### Job–category model
 
-- **Many-to-many** via `job_categories` — a job can belong to multiple categories if it appears in multiple listings.
+- **Many-to-many** via `job_categories` - a job can belong to multiple categories if it appears in multiple listings.
 - Job content upsert is still keyed on jobs.ge `Id`; category links are updated separately.
 
 ## Configuration
@@ -136,9 +139,15 @@ Base URL (development): `http://localhost:50423`
 | Method | Route | Behavior |
 |--------|-------|----------|
 | `GET` | `/api/jobs/categories` | Categories with `jobCount` and `latestScrapeRun` per slug |
-| `GET` | `/api/jobs` | Paginated job list (`?page`, `?pageSize`, `?category`, `?q`) — no descriptions |
-| `GET` | `/api/jobs/{id}` | Single job with full description and category slugs |
+| `GET` | `/api/jobs` | Paginated job list (`?page`, `?pageSize`, `?category`, `?q`) - no descriptions |
+| `GET` | `/api/jobs/{id}` | Single job with full description, structured fields, and category slugs |
 | `GET` | `/api/jobs/dotnet` | Paginated `.net` title filter (same query params as list) |
+
+### Search
+
+| Method | Route | Behavior |
+|--------|-------|----------|
+| `GET` | `/api/search` | Ranked FTS over title/company/description (`?q` required, `?category`, `?page`, `?pageSize`); trigram fallback when FTS empty; cards include structured fields |
 
 ### Scrape management
 
@@ -153,10 +162,13 @@ Base URL (development): `http://localhost:50423`
 | `GET` | `/api/jobs/scrape/batches/{batchId}` | All runs in one tick |
 | `GET` | `/api/jobs/scrape/status` | Latest run per enabled category (legacy shortcut) |
 | `GET` | `/api/jobs/scrape/status/{slug}` | Latest run for one category |
+| `POST` | `/api/jobs/scrape/enrichment/backfill` | Re-extract structured fields for stale rows (`?limit`, default 100); returns `{ processed, remaining }` |
 
 ## Database
 
 Tables: `jobs`, `categories`, `job_categories`, `scrape_runs`.
+
+`jobs` includes generated `SearchVector` (FTS), optional `DescriptionHtml`, and enrichment columns (`SalaryMin`/`Max`, `City`, `WorkMode`, etc.). Requires PostgreSQL `pg_trgm` extension (created by migration).
 
 Migrations:
 

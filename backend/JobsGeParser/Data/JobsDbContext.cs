@@ -23,7 +23,26 @@ public class JobsDbContext(DbContextOptions<JobsDbContext> options) : DbContext(
 			entity.Property(e => e.Link).IsRequired().HasMaxLength(1000);
 			entity.Property(e => e.Company).IsRequired().HasMaxLength(500);
 			entity.Property(e => e.CompanyLink).HasMaxLength(1000);
+			entity.Property(e => e.SalaryCurrency).HasMaxLength(10);
+			entity.Property(e => e.SalaryPeriod).HasMaxLength(20);
+			entity.Property(e => e.City).HasMaxLength(100);
+			entity.Property(e => e.WorkMode).HasMaxLength(20);
+			entity.Property(e => e.EmploymentType).HasMaxLength(30);
+			entity.Property(e => e.Seniority).HasMaxLength(20);
+			entity.Property(e => e.LanguageRequirement).HasMaxLength(10);
+			entity.Property(e => e.EnrichmentVersion).HasDefaultValue(0);
+			entity.Property(e => e.SearchVector)
+				.HasColumnType("tsvector")
+				.HasComputedColumnSql("""
+					setweight(to_tsvector('simple', coalesce("Name", '')), 'A') ||
+					setweight(to_tsvector('simple', coalesce("Company", '')), 'B') ||
+					setweight(to_tsvector('simple', coalesce("Description", '')), 'C')
+					""", stored: true)
+				.ValueGeneratedOnAddOrUpdate();
 			entity.HasIndex(e => e.LastSeenAt);
+			entity.HasIndex(e => e.SearchVector).HasMethod("GIN");
+			entity.HasIndex(e => e.Name).HasMethod("GIN").HasOperators("gin_trgm_ops");
+			entity.HasIndex(e => e.Company).HasMethod("GIN").HasOperators("gin_trgm_ops");
 		});
 
 		modelBuilder.Entity<CategoryEntity>(entity =>

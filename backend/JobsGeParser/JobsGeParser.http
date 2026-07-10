@@ -37,6 +37,18 @@ Accept: application/json
 
 ###
 
+# --- Public search (FTS + trigram fallback) ---
+
+GET {{Api_HostAddress}}/api/search?q=senior%20backend&page=1&pageSize=20
+Accept: application/json
+
+###
+
+GET {{Api_HostAddress}}/api/search?q=developer&category=it&page=1&pageSize=10
+Accept: application/json
+
+###
+
 # --- Scrape management ---
 
 # Dashboard: worker config, active runs, per-category status, recent batches
@@ -94,4 +106,10 @@ Accept: application/json
 ###
 
 GET {{Api_HostAddress}}/api/jobs/scrape/batches/00000000-0000-0000-0000-000000000000
+Accept: application/json
+
+###
+
+# Enrichment backfill (chunked; repeat until remaining is 0)
+POST {{Api_HostAddress}}/api/jobs/scrape/enrichment/backfill?limit=100
 Accept: application/json

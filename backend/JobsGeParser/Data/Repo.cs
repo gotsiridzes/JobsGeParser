@@ -1,5 +1,6 @@
 using JobsGeParser.Configuration;
 using JobsGeParser.Endpoints.Dtos;
+using JobsGeParser.Enrichment;
 using JobsGeParser.Models;
 using JobsGeParser.Workers;
 using Microsoft.EntityFrameworkCore;
@@ -7,10 +8,15 @@ using Microsoft.Extensions.Options;
 
 namespace JobsGeParser.Data;
 
-public class Repo(JobsDbContext db, IOptions<JobsGeParserOptions> options)
+public class Repo(
+	JobsDbContext db,
+	IOptions<JobsGeParserOptions> options,
+	EnrichmentService enrichment)
 {
 	private readonly JobsDbContext _db = db;
 	private readonly JobsGeParserOptions _options = options.Value;
+	private readonly EnrichmentService _enrichment = enrichment;
+	private const double TrigramSimilarityThreshold = 0.3;
 
 	public async Task<JobUpsertResult> UpsertAsync(JobApplication job, CancellationToken ct = default)
 	{
@@ -85,21 +91,54 @@ public class Repo(JobsDbContext db, IOptions<JobsGeParserOptions> options)
 		return new MetadataUpsertResult(result, needsDetailFetch);
 	}
 
-	public async Task UpsertDescriptionAsync(int jobId, string description, CancellationToken ct = default)
+	public async Task UpsertDescriptionAsync(
+		int jobId,
+		string description,
+		string? descriptionHtml = null,
+		CancellationToken ct = default)
 	{
 		var now = DateTimeOffset.UtcNow;
 		var existing = await _db.Jobs.FindAsync([jobId], ct)
 			?? throw new InvalidOperationException($"Job {jobId} not found.");
 
-		if (existing.Description != description)
+		var changed = existing.Description != description
+			|| existing.DescriptionHtml != descriptionHtml;
+
+		if (changed)
 		{
 			existing.Description = description;
+			existing.DescriptionHtml = descriptionHtml;
 			existing.UpdatedAt = now;
 		}
 
 		existing.DetailsFetchedAt = now;
 		existing.LastSeenAt = now;
+		ApplyEnrichment(existing, now);
 		await _db.SaveChangesAsync(ct);
+	}
+
+	public async Task<EnrichmentBackfillResultDto> BackfillEnrichmentAsync(
+		int limit = 100,
+		CancellationToken ct = default)
+	{
+		limit = Math.Clamp(limit, 1, 500);
+		var now = DateTimeOffset.UtcNow;
+
+		var stale = await _db.Jobs
+			.Where(j => j.Description != null && j.EnrichmentVersion < EnrichmentService.CurrentVersion)
+			.OrderBy(j => j.Id)
+			.Take(limit)
+			.ToListAsync(ct);
+
+		foreach (var job in stale)
+			ApplyEnrichment(job, now);
+
+		await _db.SaveChangesAsync(ct);
+
+		var remaining = await _db.Jobs
+			.CountAsync(j => j.Description != null && j.EnrichmentVersion < EnrichmentService.CurrentVersion, ct);
+
+		return new EnrichmentBackfillResultDto(stale.Count, remaining);
 	}
 
 	public async Task<JobUpsertResult> UpsertAndLinkCategoryAsync(
@@ -162,12 +201,39 @@ public class Repo(JobsDbContext db, IOptions<JobsGeParserOptions> options)
 				j.CompanyLink,
 				j.Published,
 				j.EndDate,
-				j.LastSeenAt))
+				j.LastSeenAt,
+				j.SalaryMin,
+				j.SalaryMax,
+				j.SalaryCurrency,
+				j.SalaryPeriod,
+				j.City,
+				j.WorkMode,
+				j.EmploymentType,
+				j.Seniority,
+				j.LanguageRequirement))
 			.ToListAsync(ct);
 
 		var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
 
 		return new JobsPageDto(items, totalCount, page, pageSize, totalPages);
+	}
+
+	public async Task<SearchPageDto> SearchJobsAsync(
+		string q,
+		string? categorySlug,
+		int page,
+		int pageSize,
+		CancellationToken ct = default)
+	{
+		pageSize = Math.Clamp(pageSize, 1, _options.MaxJobsPageSize);
+		page = Math.Max(page, 1);
+		q = q.Trim();
+
+		var fts = await SearchWithFtsAsync(q, categorySlug, page, pageSize, ct);
+		if (fts.TotalCount > 0)
+			return fts;
+
+		return await SearchWithTrigramsAsync(q, categorySlug, page, pageSize, ct);
 	}
 
 	public async Task<JobDetailDto?> GetJobByIdAsync(int id, CancellationToken ct = default)
@@ -193,18 +259,117 @@ public class Repo(JobsDbContext db, IOptions<JobsGeParserOptions> options)
 			entity.FirstSeenAt,
 			entity.LastSeenAt,
 			entity.UpdatedAt,
-			entity.JobCategories.Select(jc => jc.CategorySlug).OrderBy(s => s).ToList());
+			entity.JobCategories.Select(jc => jc.CategorySlug).OrderBy(s => s).ToList(),
+			entity.SalaryMin,
+			entity.SalaryMax,
+			entity.SalaryCurrency,
+			entity.SalaryPeriod,
+			entity.City,
+			entity.WorkMode,
+			entity.EmploymentType,
+			entity.Seniority,
+			entity.LanguageRequirement,
+			entity.EnrichmentVersion,
+			entity.EnrichedAt);
+	}
+
+	private async Task<SearchPageDto> SearchWithFtsAsync(
+		string q,
+		string? categorySlug,
+		int page,
+		int pageSize,
+		CancellationToken ct)
+	{
+		var tsQuery = EF.Functions.WebSearchToTsQuery("simple", q);
+		var filtered = ApplyCategoryFilter(_db.Jobs.AsNoTracking(), categorySlug)
+			.Where(j => j.SearchVector.Matches(tsQuery));
+
+		var totalCount = await filtered.CountAsync(ct);
+		if (totalCount == 0)
+			return new SearchPageDto([], 0, page, pageSize, 0, "fts");
+
+		var items = await filtered
+			.OrderByDescending(j => j.SearchVector.Rank(tsQuery))
+			.ThenByDescending(j => j.LastSeenAt)
+			.Skip((page - 1) * pageSize)
+			.Take(pageSize)
+			.Select(j => new SearchResultDto(
+				j.Id,
+				j.Name,
+				j.Link,
+				j.Company,
+				j.CompanyLink,
+				j.Published,
+				j.EndDate,
+				j.LastSeenAt,
+				(decimal)j.SearchVector.Rank(tsQuery),
+				j.SalaryMin,
+				j.SalaryMax,
+				j.SalaryCurrency,
+				j.SalaryPeriod,
+				j.City,
+				j.WorkMode,
+				j.EmploymentType,
+				j.Seniority,
+				j.LanguageRequirement))
+			.ToListAsync(ct);
+
+		var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+		return new SearchPageDto(items, totalCount, page, pageSize, totalPages, "fts");
+	}
+
+	private async Task<SearchPageDto> SearchWithTrigramsAsync(
+		string q,
+		string? categorySlug,
+		int page,
+		int pageSize,
+		CancellationToken ct)
+	{
+		var filtered = ApplyCategoryFilter(_db.Jobs.AsNoTracking(), categorySlug)
+			.Where(j =>
+				EF.Functions.TrigramsSimilarity(j.Name, q) >= TrigramSimilarityThreshold
+				|| EF.Functions.TrigramsSimilarity(j.Company, q) >= TrigramSimilarityThreshold);
+
+		var totalCount = await filtered.CountAsync(ct);
+		var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
+
+		var items = await filtered
+			.OrderByDescending(j =>
+				EF.Functions.TrigramsSimilarity(j.Name, q) >= EF.Functions.TrigramsSimilarity(j.Company, q)
+					? EF.Functions.TrigramsSimilarity(j.Name, q)
+					: EF.Functions.TrigramsSimilarity(j.Company, q))
+			.ThenByDescending(j => j.LastSeenAt)
+			.Skip((page - 1) * pageSize)
+			.Take(pageSize)
+			.Select(j => new SearchResultDto(
+				j.Id,
+				j.Name,
+				j.Link,
+				j.Company,
+				j.CompanyLink,
+				j.Published,
+				j.EndDate,
+				j.LastSeenAt,
+				(decimal)(EF.Functions.TrigramsSimilarity(j.Name, q) >= EF.Functions.TrigramsSimilarity(j.Company, q)
+					? EF.Functions.TrigramsSimilarity(j.Name, q)
+					: EF.Functions.TrigramsSimilarity(j.Company, q)),
+				j.SalaryMin,
+				j.SalaryMax,
+				j.SalaryCurrency,
+				j.SalaryPeriod,
+				j.City,
+				j.WorkMode,
+				j.EmploymentType,
+				j.Seniority,
+				j.LanguageRequirement))
+			.ToListAsync(ct);
+
+		return new SearchPageDto(items, totalCount, page, pageSize, totalPages, "trgm");
 	}
 
 	private IQueryable<JobEntity> ApplyJobFilters(JobQuery query)
 	{
-		var jobs = _db.Jobs.AsNoTracking();
-
-		if (!string.IsNullOrWhiteSpace(query.CategorySlug))
-		{
-			var slug = query.CategorySlug;
-			jobs = jobs.Where(j => j.JobCategories.Any(jc => jc.CategorySlug == slug));
-		}
+		var jobs = ApplyCategoryFilter(_db.Jobs.AsNoTracking(), query.CategorySlug);
 
 		if (!string.IsNullOrWhiteSpace(query.Search))
 		{
@@ -217,6 +382,31 @@ public class Repo(JobsDbContext db, IOptions<JobsGeParserOptions> options)
 			jobs = jobs.Where(j => EF.Functions.ILike(j.Name, "%.net%"));
 
 		return jobs;
+	}
+
+	private static IQueryable<JobEntity> ApplyCategoryFilter(IQueryable<JobEntity> jobs, string? categorySlug)
+	{
+		if (string.IsNullOrWhiteSpace(categorySlug))
+			return jobs;
+
+		var slug = categorySlug;
+		return jobs.Where(j => j.JobCategories.Any(jc => jc.CategorySlug == slug));
+	}
+
+	private void ApplyEnrichment(JobEntity entity, DateTimeOffset now)
+	{
+		var result = _enrichment.Extract(entity.Name, entity.Description, entity.DescriptionHtml);
+		entity.SalaryMin = result.SalaryMin;
+		entity.SalaryMax = result.SalaryMax;
+		entity.SalaryCurrency = result.SalaryCurrency;
+		entity.SalaryPeriod = result.SalaryPeriod;
+		entity.City = result.City;
+		entity.WorkMode = result.WorkMode;
+		entity.EmploymentType = result.EmploymentType;
+		entity.Seniority = result.Seniority;
+		entity.LanguageRequirement = result.LanguageRequirement;
+		entity.EnrichmentVersion = EnrichmentService.CurrentVersion;
+		entity.EnrichedAt = now;
 	}
 
 	public async Task<IReadOnlyList<CategoryDto>> GetCategoriesAsync(CancellationToken ct = default)

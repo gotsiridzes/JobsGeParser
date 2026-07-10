@@ -1,4 +1,5 @@
 using JobsGeParser.Data;
+using JobsGeParser.Enrichment;
 using JobsGeParser.Scraping;
 using JobsGeParser.Workers;
 using Microsoft.EntityFrameworkCore;
@@ -48,6 +49,7 @@ public static class DependencyInjection
 
 		self.AddScoped<JobsGeClient>()
 			.AddSingleton<HtmlProcessor>()
+			.AddSingleton<EnrichmentService>()
 			.AddScoped<Repo>();
 
 		self.AddHostedService<JobScrapeWorker>();
