@@ -618,8 +618,18 @@ public class Repo(
 
 		var totalCount = await query.CountAsync(ct);
 
-		var items = await query
-			.OrderByDescending(r => r.StartedAt)
+		// Batch views: Running first, then Completed, then Failed; history list stays newest-first.
+		IOrderedQueryable<ScrapeRunEntity> ordered = batchId is not null
+			? query
+				.OrderBy(r =>
+					r.Status == ScrapeRunStatus.Running ? 0
+					: r.Status == ScrapeRunStatus.Completed ? 1
+					: r.Status == ScrapeRunStatus.Failed ? 2
+					: 3)
+				.ThenBy(r => r.StartedAt)
+			: query.OrderByDescending(r => r.StartedAt);
+
+		var items = await ordered
 			.Skip(offset)
 			.Take(limit)
 			.ToListAsync(ct);
@@ -648,7 +658,12 @@ public class Repo(
 			var runs = await _db.ScrapeRuns
 				.AsNoTracking()
 				.Where(r => r.BatchId == id)
-				.OrderBy(r => r.StartedAt)
+				.OrderBy(r =>
+					r.Status == ScrapeRunStatus.Running ? 0
+					: r.Status == ScrapeRunStatus.Completed ? 1
+					: r.Status == ScrapeRunStatus.Failed ? 2
+					: 3)
+				.ThenBy(r => r.StartedAt)
 				.ToListAsync(ct);
 
 			if (runs.Count == 0)
