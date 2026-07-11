@@ -31,7 +31,8 @@ backend/
 │   ├── Scraping/
 │   ├── Workers/
 │   └── Endpoints/
-└── JobsGeParser.Tests/
+├── JobsGeParser.Tests/
+└── JobsGeParser.PerformanceTests/   # live scrape matrix (Testcontainers + Docker)
 ```
 
 Full monorepo layout:
@@ -104,6 +105,7 @@ Only one app instance should scrape in dev/prod - multiple instances with `Scrap
     "DetailPageDelayMs": 500,
     "DetailFetchConcurrency": 3,
     "CategoryScrapeConcurrency": 5,
+    "HttpClientTimeoutSeconds": 30,
     "MaxListingPages": 50,
     "ProgressUpdateInterval": 5,
     "DefaultJobsPageSize": 20,
@@ -126,6 +128,7 @@ Only one app instance should scrape in dev/prod - multiple instances with `Scrap
 | `DetailPageDelayMs` | Minimum ms between HTTP request starts (global across all parallel workers) |
 | `DetailFetchConcurrency` | Max parallel detail-page fetches per category (default 3) |
 | `CategoryScrapeConcurrency` | Max categories scraped in parallel per tick (default 5) |
+| `HttpClientTimeoutSeconds` | Timeout for jobs.ge listing and detail HTTP requests (default 30) |
 | `MaxListingPages` | Safety cap on listing pages per category, including infinite-scroll batches (default 50) |
 | `ProgressUpdateInterval` | Update `scrape_runs` counts every N completed jobs (default 5) |
 | `DefaultJobsPageSize` | Default page size for `GET /api/jobs` (default 20) |
@@ -204,6 +207,28 @@ npm run dev
 ```
 
 Open `http://localhost:5173`. See [frontend/README.md](../frontend/README.md).
+
+### Performance tests (live jobs.ge)
+
+Requires Docker Desktop (Testcontainers PostgreSQL) and network access to `https://jobs.ge/`.
+
+These tests hit the live site with a curated settings matrix (`DetailPageDelayMs`, `DetailFetchConcurrency`, `CategoryScrapeConcurrency`, `HttpClientTimeoutSeconds`). They are Trait-gated and not run in CI.
+
+```bash
+# Matrix (3 categories, MaxListingPages=2): compare settings
+dotnet test JobsGeParser.PerformanceTests --filter Category=Performance
+
+# Optional near-production run (all categories, MaxListingPages=5)
+dotnet test JobsGeParser.PerformanceTests --filter Category=PerformanceHeavy
+```
+
+A Markdown report is written under `JobsGeParser.PerformanceTests/bin/.../TestResults/perf-*.md` when the collection fixture disposes. Compare relative rankings from the same run; absolute numbers vary with jobs.ge load.
+
+Unit tests (no Docker):
+
+```bash
+dotnet test JobsGeParser.Tests
+```
 
 **Production hosting (optional):**
 

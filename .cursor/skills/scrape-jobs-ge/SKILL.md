@@ -16,7 +16,8 @@ description: Modifies jobs.ge scraping, HtmlAgilityPack selectors, or JobsGeClie
 | `Scraping/ScrapeProgressReporter.cs` | Throttled `scrape_runs` progress updates |
 | `Scraping/GeorgianDateExtensions.cs` | Georgian month name → DateOnly parsing |
 | `Scraping/CategorySync.cs` | Sync categories from appsettings to DB on startup |
-| `Workers/JobScrapeWorker.cs` | Category Channel + parallel category consumers per tick; abandons orphaned Running runs on start/stop |
+| `Workers/JobScrapeWorker.cs` | Interval timer + lock; delegates batch to `ScrapeBatchRunner` |
+| `Scraping/ScrapeBatchRunner.cs` | Category Channel + parallel category consumers per batch |
 | `Workers/ScrapeWorkerState.cs` | Live tick state, `activeCategoryRuns` |
 | `Configuration/JobsGeParserOptions.cs` | Categories[], category/job concurrency, delays |
 | `Data/Repo.cs` | `UpsertAndLinkCategoryAsync` (single SaveChanges) |
@@ -33,10 +34,11 @@ description: Modifies jobs.ge scraping, HtmlAgilityPack selectors, or JobsGeClie
 
 ```
 JobScrapeWorker (PeriodicTimer)
-  → Channel of enabled categories (M parallel consumers)
-      per category (own DI scope):
-        StartScrapeRun(categorySlug, batchId)
-        → JobsGeClient.ScrapeCategoryAsync
+  → ScrapeBatchRunner.RunBatchAsync
+      → Channel of enabled categories (M parallel consumers)
+          per category (own DI scope):
+            StartScrapeRun(categorySlug, batchId)
+            → JobsGeClient.ScrapeCategoryAsync
             → GET listing pages until empty (page 1 + for_scroll; throttled) → parse → job Channel
             → N job consumers in parallel:
                 GET detail (throttled) → UpsertAndLinkCategoryAsync (scoped Repo)

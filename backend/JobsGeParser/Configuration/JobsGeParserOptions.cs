@@ -19,6 +19,11 @@ public class JobsGeParserOptions
 	public int CategoryScrapeConcurrency { get; set; } = 5;
 
 	/// <summary>
+	/// HttpClient timeout for jobs.ge listing and detail requests (seconds).
+	/// </summary>
+	public int HttpClientTimeoutSeconds { get; set; } = 30;
+
+	/// <summary>
 	/// Safety cap on jobs.ge listing pages per category (page 1 + for_scroll batches).
 	/// </summary>
 	public int MaxListingPages { get; set; } = 50;
