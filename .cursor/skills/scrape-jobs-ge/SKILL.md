@@ -10,7 +10,8 @@ description: Modifies jobs.ge scraping, HtmlAgilityPack selectors, or JobsGeClie
 | File | Responsibility |
 |------|----------------|
 | `Scraping/HtmlProcessor.cs` | List + description parsing |
-| `Scraping/JobsGeClient.cs` | Job Channel + parallel consumers, per-job scoped Repo |
+| `Scraping/JobsGeClient.cs` | Listing pagination (`for_scroll`), job Channel + parallel consumers, per-job scoped Repo |
+| `Scraping/ListingUrlBuilder.cs` | Rewrites category ListUrl `page` / `for_scroll` query params |
 | `Scraping/ScrapeRequestThrottle.cs` | Global concurrency cap + min delay between HTTP requests |
 | `Scraping/ScrapeProgressReporter.cs` | Throttled `scrape_runs` progress updates |
 | `Scraping/GeorgianDateExtensions.cs` | Georgian month name → DateOnly parsing |
@@ -36,7 +37,7 @@ JobScrapeWorker (PeriodicTimer)
       per category (own DI scope):
         StartScrapeRun(categorySlug, batchId)
         → JobsGeClient.ScrapeCategoryAsync
-            → GET listing (throttled) → parse → job Channel
+            → GET listing pages until empty (page 1 + for_scroll; throttled) → parse → job Channel
             → N job consumers in parallel:
                 GET detail (throttled) → UpsertAndLinkCategoryAsync (scoped Repo)
                 → throttled progress update

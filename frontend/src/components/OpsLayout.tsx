@@ -1,5 +1,5 @@
 import { Link, NavLink, Outlet } from 'react-router-dom'
-import { Activity, Briefcase, FolderTree, History, LayoutDashboard } from 'lucide-react'
+import { Activity, ArrowLeft, Briefcase, FolderTree, History, LayoutDashboard } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
@@ -43,9 +43,10 @@ export function OpsLayout() {
         <div className="p-3 border-t">
           <Link
             to="/"
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
           >
-            Public search
+            <ArrowLeft className="h-4 w-4" />
+            Back to public site
           </Link>
         </div>
       </aside>

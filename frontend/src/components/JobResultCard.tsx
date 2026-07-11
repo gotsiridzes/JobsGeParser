@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { ExternalLink } from 'lucide-react'
 import { JobStructuredChips } from '@/components/JobStructuredChips'
 import type { JobListItem, SearchResult } from '@/api/types'
-import { formatDateOnly } from '@/lib/utils'
+import { formatDateOnly, toJobsGeUrl } from '@/lib/utils'
 
 type JobCardSource = Pick<
   JobListItem | SearchResult,
@@ -49,7 +49,7 @@ export function JobResultCard({ job, searchState }: Props) {
           </p>
         </div>
         <a
-          href={job.link}
+          href={toJobsGeUrl(job.link)}
           target="_blank"
           rel="noopener noreferrer"
           className="shrink-0 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"

@@ -5,6 +5,7 @@ using JobsGeParser.Models;
 using JobsGeParser.Workers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Npgsql;
 
 namespace JobsGeParser.Data;
 
@@ -58,6 +59,25 @@ public class Repo(
 		JobApplication job,
 		string categorySlug,
 		CancellationToken ct = default)
+	{
+		// Parallel category scrapes can race on the same jobs.ge id; retry once after PK conflict.
+		for (var attempt = 0; ; attempt++)
+		{
+			try
+			{
+				return await UpsertMetadataAndLinkCategoryCoreAsync(job, categorySlug, ct);
+			}
+			catch (DbUpdateException ex) when (attempt == 0 && IsUniqueViolation(ex))
+			{
+				_db.ChangeTracker.Clear();
+			}
+		}
+	}
+
+	private async Task<MetadataUpsertResult> UpsertMetadataAndLinkCategoryCoreAsync(
+		JobApplication job,
+		string categorySlug,
+		CancellationToken ct)
 	{
 		var now = DateTimeOffset.UtcNow;
 		var existing = await _db.Jobs.FindAsync([job.Id], ct);
@@ -145,6 +165,24 @@ public class Repo(
 		JobApplication job,
 		string categorySlug,
 		CancellationToken ct = default)
+	{
+		for (var attempt = 0; ; attempt++)
+		{
+			try
+			{
+				return await UpsertAndLinkCategoryCoreAsync(job, categorySlug, ct);
+			}
+			catch (DbUpdateException ex) when (attempt == 0 && IsUniqueViolation(ex))
+			{
+				_db.ChangeTracker.Clear();
+			}
+		}
+	}
+
+	private async Task<JobUpsertResult> UpsertAndLinkCategoryCoreAsync(
+		JobApplication job,
+		string categorySlug,
+		CancellationToken ct)
 	{
 		var now = DateTimeOffset.UtcNow;
 		var existing = await _db.Jobs.FindAsync([job.Id], ct);
@@ -280,16 +318,17 @@ public class Repo(
 		int pageSize,
 		CancellationToken ct)
 	{
-		var tsQuery = EF.Functions.WebSearchToTsQuery("simple", q);
+		// WebSearchToTsQuery must stay inside the expression tree; a local assignment
+		// forces client evaluation and throws at runtime.
 		var filtered = ApplyCategoryFilter(_db.Jobs.AsNoTracking(), categorySlug)
-			.Where(j => j.SearchVector.Matches(tsQuery));
+			.Where(j => j.SearchVector.Matches(EF.Functions.WebSearchToTsQuery("simple", q)));
 
 		var totalCount = await filtered.CountAsync(ct);
 		if (totalCount == 0)
 			return new SearchPageDto([], 0, page, pageSize, 0, "fts");
 
 		var items = await filtered
-			.OrderByDescending(j => j.SearchVector.Rank(tsQuery))
+			.OrderByDescending(j => j.SearchVector.Rank(EF.Functions.WebSearchToTsQuery("simple", q)))
 			.ThenByDescending(j => j.LastSeenAt)
 			.Skip((page - 1) * pageSize)
 			.Take(pageSize)
@@ -302,7 +341,7 @@ public class Repo(
 				j.Published,
 				j.EndDate,
 				j.LastSeenAt,
-				(decimal)j.SearchVector.Rank(tsQuery),
+				(decimal)j.SearchVector.Rank(EF.Functions.WebSearchToTsQuery("simple", q)),
 				j.SalaryMin,
 				j.SalaryMax,
 				j.SalaryCurrency,
@@ -454,7 +493,9 @@ public class Repo(
 			BatchId = batchId,
 			CategorySlug = categorySlug,
 			StartedAt = DateTimeOffset.UtcNow,
-			Status = ScrapeRunStatus.Running
+			Status = ScrapeRunStatus.Running,
+			Phase = ScrapeRunPhase.Discovering,
+			ProgressUpdatedAt = DateTimeOffset.UtcNow
 		};
 
 		_db.ScrapeRuns.Add(run);
@@ -470,6 +511,10 @@ public class Repo(
 		int failed,
 		int detailsFetched,
 		int detailsSkipped,
+		string phase,
+		int listingPagesFetched,
+		int jobsDiscovered,
+		int jobsNeedingDetails,
 		CancellationToken ct = default)
 	{
 		var run = await _db.ScrapeRuns.FindAsync([runId], ct);
@@ -482,6 +527,11 @@ public class Repo(
 		run.Failed = failed;
 		run.DetailsFetched = detailsFetched;
 		run.DetailsSkipped = detailsSkipped;
+		run.Phase = phase;
+		run.ListingPagesFetched = listingPagesFetched;
+		run.JobsDiscovered = jobsDiscovered;
+		run.JobsNeedingDetails = jobsNeedingDetails;
+		run.ProgressUpdatedAt = DateTimeOffset.UtcNow;
 		await _db.SaveChangesAsync(ct);
 	}
 
@@ -498,6 +548,8 @@ public class Repo(
 		run.DetailsFetched = result.DetailsFetched;
 		run.DetailsSkipped = result.DetailsSkipped;
 		run.Status = ScrapeRunStatus.Completed;
+		run.Phase = ScrapeRunPhase.Completed;
+		run.ProgressUpdatedAt = DateTimeOffset.UtcNow;
 		await _db.SaveChangesAsync(ct);
 	}
 
@@ -509,7 +561,9 @@ public class Repo(
 
 		run.FinishedAt = DateTimeOffset.UtcNow;
 		run.Status = ScrapeRunStatus.Failed;
+		run.Phase = ScrapeRunPhase.Failed;
 		run.ErrorMessage = errorMessage;
+		run.ProgressUpdatedAt = DateTimeOffset.UtcNow;
 		await _db.SaveChangesAsync(ct);
 	}
 
@@ -687,6 +741,9 @@ public class Repo(
 			link.LastSeenAt = now;
 		}
 	}
+
+	private static bool IsUniqueViolation(DbUpdateException ex) =>
+		ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
 
 	private static JobEntity MapToEntity(
 		JobApplication job,

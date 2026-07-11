@@ -4,7 +4,7 @@ import { useJob } from '@/api/hooks'
 import { JobStructuredChips } from '@/components/JobStructuredChips'
 import { ErrorState, LoadingState } from '@/components/StateViews'
 import { Button } from '@/components/ui/input'
-import { formatDateOnly } from '@/lib/utils'
+import { formatDateOnly, toJobsGeUrl } from '@/lib/utils'
 
 type SearchNavState = { q?: string; category?: string; page?: number }
 
@@ -65,7 +65,7 @@ export function PublicJobDetailPage() {
         </p>
       </div>
 
-      <a href={data.link} target="_blank" rel="noopener noreferrer">
+      <a href={toJobsGeUrl(data.link)} target="_blank" rel="noopener noreferrer">
         <Button className="w-full sm:w-auto h-11 gap-2 bg-[hsl(var(--public-accent))] text-white hover:opacity-90">
           View on jobs.ge
           <ExternalLink className="h-4 w-4" />

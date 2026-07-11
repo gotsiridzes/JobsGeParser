@@ -1,4 +1,5 @@
 export type ScrapeRunStatus = 'Running' | 'Completed' | 'Failed'
+export type ScrapeRunPhase = 'Discovering' | 'Enriching' | 'Completed' | 'Failed'
 
 export interface ScrapeRun {
   id: number
@@ -12,6 +13,11 @@ export interface ScrapeRun {
   failed: number
   detailsFetched: number
   detailsSkipped: number
+  phase: ScrapeRunPhase
+  listingPagesFetched: number
+  jobsDiscovered: number
+  jobsNeedingDetails: number
+  progressUpdatedAt: string | null
   status: ScrapeRunStatus
   errorMessage: string | null
 }

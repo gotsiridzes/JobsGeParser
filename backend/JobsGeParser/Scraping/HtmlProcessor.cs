@@ -14,13 +14,25 @@ public class HtmlProcessor
 
 	private static IEnumerable<IReadOnlyList<string>> ParseListingRows(HtmlDocument document)
 	{
+		// Full category page uses regularEntries; infinite-scroll batches use table#temp_table.
 		var tableNode = document.DocumentNode
-			.SelectSingleNode("//html//body//div[@class='regularEntries']//table");
+			.SelectSingleNode("//div[@class='regularEntries']//table")
+			?? document.DocumentNode.SelectSingleNode("//table[@id='temp_table']");
 
 		if (tableNode is null)
 			yield break;
 
-		foreach (var tr in tableNode.Descendants("tr").Skip(1))
+		var isScrollFragment = string.Equals(
+			tableNode.GetAttributeValue("id", null),
+			"temp_table",
+			StringComparison.OrdinalIgnoreCase);
+
+		// Full pages include a header row; scroll fragments do not.
+		var rows = isScrollFragment
+			? tableNode.Descendants("tr")
+			: tableNode.Descendants("tr").Skip(1);
+
+		foreach (var tr in rows)
 		{
 			if (tr.Elements("td").Count() <= 1)
 				continue;

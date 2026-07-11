@@ -4,7 +4,7 @@ import { JobStructuredChips } from '@/components/JobStructuredChips'
 import { ErrorState, LoadingState } from '@/components/StateViews'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { formatDateOnly, formatDateTime } from '@/lib/utils'
+import { formatDateOnly, formatDateTime, toJobsGeUrl } from '@/lib/utils'
 
 export function JobDetailPage() {
   const { id } = useParams()
@@ -102,7 +102,7 @@ export function JobDetailPage() {
               ))}
             </div>
             <a
-              href={data.link}
+              href={toJobsGeUrl(data.link)}
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm text-primary hover:underline block"
@@ -111,7 +111,7 @@ export function JobDetailPage() {
             </a>
             {data.companyLink && (
               <a
-                href={data.companyLink}
+                href={toJobsGeUrl(data.companyLink)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-primary hover:underline block"

@@ -73,6 +73,7 @@ public class JobsDbContext(DbContextOptions<JobsDbContext> options) : DbContext(
 			entity.ToTable("scrape_runs");
 			entity.HasKey(e => e.Id);
 			entity.Property(e => e.Status).IsRequired().HasMaxLength(50);
+			entity.Property(e => e.Phase).IsRequired().HasMaxLength(50);
 			entity.Property(e => e.CategorySlug).HasMaxLength(100);
 			entity.HasIndex(e => e.StartedAt);
 			entity.HasIndex(e => e.Status);

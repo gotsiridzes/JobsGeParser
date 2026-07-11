@@ -25,28 +25,27 @@ public class JobsGeClient(
 	{
 		var stopwatch = Stopwatch.StartNew();
 		var counters = new ScrapeCounters();
+		var progress = new ScrapeProgressReporter(scrapeRunId, scopeFactory, _ops.ProgressUpdateInterval);
 
 		logger.LogInformation(
-			"Fetching listing for {Category} (run {RunId})",
+			"Fetching listing pages for {Category} (run {RunId})",
 			category.Slug,
 			scrapeRunId);
 
-		var response = await throttle.ExecuteAsync(
-			() => _client.GetAsync(category.ListUrl, ct),
-			ct);
-		response.EnsureSuccessStatusCode();
-
-		var content = await response.Content.ReadAsStringAsync(ct);
-		var jobs = processor.ParseHtmlAndGetJobApplicationsList(content).ToList();
+		var (jobs, listingPagesFetched) = await FetchAllListingJobsAsync(category, progress, ct);
 		var jobsNeedingDetails = new List<JobApplication>(jobs.Count);
 
 		if (jobs.Count == 0)
 		{
 			logger.LogWarning(
-				"Listing for {Category} returned no parseable jobs (url={ListUrl}). Page may be empty or HTML structure changed.",
+				"Listing for {Category} returned no parseable jobs (listUrl={ListUrl}). Page may be empty or HTML structure changed.",
 				category.Slug,
 				category.ListUrl);
 		}
+
+		await progress.FlushAsync(
+			counters.ToSnapshot(ScrapeRunPhase.Discovering, listingPagesFetched, jobs.Count, 0),
+			ct);
 
 		using (var discoverScope = scopeFactory.CreateScope())
 		{
@@ -75,7 +74,7 @@ public class JobsGeClient(
 		}
 
 		logger.LogInformation(
-			"Category {Category}: {JobCount} jobs on listing — inserted={Inserted}, updated={Updated}, skipped={Skipped}, failed={Failed}, {NeedingDetails} need detail fetch",
+			"Category {Category}: {JobCount} unique jobs on listing - inserted={Inserted}, updated={Updated}, skipped={Skipped}, failed={Failed}, {NeedingDetails} need detail fetch",
 			category.Slug,
 			jobs.Count,
 			counters.Inserted,
@@ -84,14 +83,29 @@ public class JobsGeClient(
 			counters.Failed,
 			jobsNeedingDetails.Count);
 
+		await progress.FlushAsync(
+			counters.ToSnapshot(
+				ScrapeRunPhase.Enriching,
+				listingPagesFetched,
+				jobs.Count,
+				jobsNeedingDetails.Count),
+			ct);
+
 		if (jobsNeedingDetails.Count > 0)
 		{
 			var concurrency = _ops.DetailFetchConcurrency;
 			var channel = Channel.CreateBounded<JobApplication>(concurrency * 4);
-			var progress = new ScrapeProgressReporter(scrapeRunId, scopeFactory, _ops.ProgressUpdateInterval);
 
 			var consumers = Enumerable.Range(0, concurrency)
-				.Select(_ => EnrichJobsAsync(channel.Reader, category.Slug, counters, progress, ct))
+				.Select(_ => EnrichJobsAsync(
+					channel.Reader,
+					category.Slug,
+					counters,
+					progress,
+					listingPagesFetched,
+					jobs.Count,
+					jobsNeedingDetails.Count,
+					ct))
 				.ToArray();
 
 			foreach (var job in jobsNeedingDetails)
@@ -103,19 +117,13 @@ public class JobsGeClient(
 
 		stopwatch.Stop();
 
-		using (var flushScope = scopeFactory.CreateScope())
-		{
-			var repo = flushScope.ServiceProvider.GetRequiredService<Repo>();
-			await repo.UpdateScrapeRunProgressAsync(
-				scrapeRunId,
-				counters.Inserted,
-				counters.Updated,
-				counters.Skipped,
-				counters.Failed,
-				counters.DetailsFetched,
-				counters.DetailsSkipped,
-				ct);
-		}
+		await progress.FlushAsync(
+			counters.ToSnapshot(
+				ScrapeRunPhase.Enriching,
+				listingPagesFetched,
+				jobs.Count,
+				jobsNeedingDetails.Count),
+			ct);
 
 		return new ScrapeResult(
 			counters.Inserted,
@@ -127,11 +135,100 @@ public class JobsGeClient(
 			stopwatch.Elapsed);
 	}
 
+	private async Task<(List<JobApplication> Jobs, int PagesFetched)> FetchAllListingJobsAsync(
+		JobCategoryOptions category,
+		ScrapeProgressReporter progress,
+		CancellationToken ct)
+	{
+		var jobsById = new Dictionary<int, JobApplication>();
+		var pagesFetched = 0;
+
+		for (var page = 1; page <= _ops.MaxListingPages; page++)
+		{
+			var url = ListingUrlBuilder.ForPage(category.ListUrl, page);
+			var response = await throttle.ExecuteAsync(
+				() => _client.GetAsync(url, ct),
+				ct);
+			response.EnsureSuccessStatusCode();
+
+			var content = await response.Content.ReadAsStringAsync(ct);
+			var batch = processor.ParseHtmlAndGetJobApplicationsList(content).ToList();
+			pagesFetched = page;
+
+			if (batch.Count == 0)
+			{
+				logger.LogInformation(
+					"Category {Category}: listing page {Page} empty - stopping pagination (unique={Unique})",
+					category.Slug,
+					page,
+					jobsById.Count);
+				await progress.FlushAsync(
+					new ScrapeProgressSnapshot(
+						0, 0, 0, 0, 0, 0,
+						ScrapeRunPhase.Discovering,
+						pagesFetched,
+						jobsById.Count,
+						0),
+					ct);
+				break;
+			}
+
+			var added = 0;
+			foreach (var job in batch)
+			{
+				if (jobsById.TryAdd(job.Id, job))
+					added++;
+			}
+
+			logger.LogInformation(
+				"Category {Category}: listing page {Page} - parsed={Parsed}, new={New}, unique={Unique}",
+				category.Slug,
+				page,
+				batch.Count,
+				added,
+				jobsById.Count);
+
+			await progress.FlushAsync(
+				new ScrapeProgressSnapshot(
+					0, 0, 0, 0, 0, 0,
+					ScrapeRunPhase.Discovering,
+					pagesFetched,
+					jobsById.Count,
+					0),
+				ct);
+
+			// jobs.ge repeats the last scroll batch instead of returning empty HTML; stop when nothing new.
+			if (added == 0)
+			{
+				logger.LogInformation(
+					"Category {Category}: listing page {Page} added no new jobs - stopping pagination (unique={Unique})",
+					category.Slug,
+					page,
+					jobsById.Count);
+				break;
+			}
+
+			if (page == _ops.MaxListingPages)
+			{
+				logger.LogWarning(
+					"Category {Category}: reached MaxListingPages ({MaxPages}); stopping pagination with {Unique} unique jobs",
+					category.Slug,
+					_ops.MaxListingPages,
+					jobsById.Count);
+			}
+		}
+
+		return (jobsById.Values.ToList(), pagesFetched);
+	}
+
 	private async Task EnrichJobsAsync(
 		ChannelReader<JobApplication> reader,
 		string categorySlug,
 		ScrapeCounters counters,
 		ScrapeProgressReporter progress,
+		int listingPagesFetched,
+		int jobsDiscovered,
+		int jobsNeedingDetails,
 		CancellationToken ct)
 	{
 		await foreach (var job in reader.ReadAllAsync(ct))
@@ -171,7 +268,13 @@ public class JobsGeClient(
 					categorySlug);
 			}
 
-			await progress.ReportAsync(counters.ToSnapshot(), ct);
+			await progress.ReportAsync(
+				counters.ToSnapshot(
+					ScrapeRunPhase.Enriching,
+					listingPagesFetched,
+					jobsDiscovered,
+					jobsNeedingDetails),
+				ct);
 		}
 	}
 
@@ -205,7 +308,21 @@ public class JobsGeClient(
 		public void RecordDetailsSkipped() => Interlocked.Increment(ref _detailsSkipped);
 		public void RecordFailed() => Interlocked.Increment(ref _failed);
 
-		public ScrapeProgressSnapshot ToSnapshot() =>
-			new(Inserted, Updated, Skipped, Failed, DetailsFetched, DetailsSkipped);
+		public ScrapeProgressSnapshot ToSnapshot(
+			string phase,
+			int listingPagesFetched,
+			int jobsDiscovered,
+			int jobsNeedingDetails) =>
+			new(
+				Inserted,
+				Updated,
+				Skipped,
+				Failed,
+				DetailsFetched,
+				DetailsSkipped,
+				phase,
+				listingPagesFetched,
+				jobsDiscovered,
+				jobsNeedingDetails);
 	}
 }

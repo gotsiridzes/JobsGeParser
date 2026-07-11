@@ -43,6 +43,9 @@ public sealed class JobsGeParserOptionsValidator : IValidateOptions<JobsGeParser
 		if (options.CategoryScrapeConcurrency < 1)
 			return ValidateOptionsResult.Fail("CategoryScrapeConcurrency must be at least 1.");
 
+		if (options.MaxListingPages < 1)
+			return ValidateOptionsResult.Fail("MaxListingPages must be at least 1.");
+
 		if (options.ProgressUpdateInterval < 1)
 			return ValidateOptionsResult.Fail("ProgressUpdateInterval must be at least 1.");
 

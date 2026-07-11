@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useScrapeOverview } from '@/api/hooks'
 import { RunCounters } from '@/components/RunCounters'
+import { RunProgressBar } from '@/components/RunProgressBar'
 import { StatusBadge } from '@/components/StatusBadge'
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews'
 import { Badge } from '@/components/ui/badge'
@@ -166,6 +167,7 @@ export function DashboardPage() {
                   <TableHead>Category</TableHead>
                   <TableHead>Started</TableHead>
                   <TableHead>Duration</TableHead>
+                  <TableHead>Progress</TableHead>
                   <TableHead>Counters</TableHead>
                 </TableRow>
               </TableHeader>
@@ -176,6 +178,9 @@ export function DashboardPage() {
                     <TableCell>{run.categorySlug ?? '—'}</TableCell>
                     <TableCell>{formatDateTime(run.startedAt)}</TableCell>
                     <TableCell>{formatDuration(run.startedAt, run.finishedAt)}</TableCell>
+                    <TableCell>
+                      <RunProgressBar run={run} />
+                    </TableCell>
                     <TableCell>
                       <RunCounters run={run} />
                     </TableCell>
@@ -203,6 +208,7 @@ export function DashboardPage() {
                   <TableHead>Status</TableHead>
                   <TableHead>Finished</TableHead>
                   <TableHead>Duration</TableHead>
+                  <TableHead>Progress</TableHead>
                   <TableHead>Counters</TableHead>
                 </TableRow>
               </TableHeader>
@@ -215,6 +221,9 @@ export function DashboardPage() {
                     </TableCell>
                     <TableCell>{formatDateTime(run.finishedAt)}</TableCell>
                     <TableCell>{formatDuration(run.startedAt, run.finishedAt)}</TableCell>
+                    <TableCell>
+                      <RunProgressBar run={run} />
+                    </TableCell>
                     <TableCell>
                       <RunCounters run={run} />
                     </TableCell>

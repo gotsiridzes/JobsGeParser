@@ -68,7 +68,7 @@ flowchart TB
 2. Enabled categories are enqueued to a bounded `Channel`; **M parallel category consumers** run at once (`CategoryScrapeConcurrency`).
 3. Per category:
    - Start a `scrape_runs` row with `CategorySlug`
-   - **Discover:** GET listing → parse metadata → `UpsertMetadataAndLinkCategoryAsync` for every row
+   - **Discover:** GET listing page 1, then `for_scroll=yes` pages until a page adds no new job ids (jobs.ge repeats the last batch; capped by `MaxListingPages`) → parse metadata → `UpsertMetadataAndLinkCategoryAsync` for every unique job id
    - **Enrich:** only jobs that are new, metadata-changed, or missing `DetailsFetchedAt` are enqueued to a job `Channel`
    - **N parallel enrich consumers** fetch detail pages (bounded by `DetailFetchConcurrency`) → `UpsertDescriptionAsync` (plain text + HTML) → structured enrichment
    - Progress written every `ProgressUpdateInterval` enriched jobs (plus final flush)
@@ -93,7 +93,7 @@ Only one app instance should scrape in dev/prod - multiple instances with `Scrap
       {
         "Slug": "it",
         "Name": "IT / Programming",
-        "ListUrl": "?page=1&q=&cid=6&lid=1&jid=1",
+        "ListUrl": "?page=1&q=&cid=6&lid=0&jid=0",
         "Enabled": true
       }
     ],
@@ -103,6 +103,7 @@ Only one app instance should scrape in dev/prod - multiple instances with `Scrap
     "DetailPageDelayMs": 500,
     "DetailFetchConcurrency": 3,
     "CategoryScrapeConcurrency": 5,
+    "MaxListingPages": 50,
     "ProgressUpdateInterval": 5,
     "DefaultJobsPageSize": 20,
     "MaxJobsPageSize": 100
@@ -118,12 +119,13 @@ Only one app instance should scrape in dev/prod - multiple instances with `Scrap
 | `Cors.AllowedOrigins` | Browser origins allowed for cross-origin API requests; empty array disables CORS middleware |
 | `Categories` | List of scrape targets (slug, name, list URL, enabled) |
 | `Categories[].Slug` | Stable key for filtering (e.g. `it`) |
-| `Categories[].ListUrl` | Relative listing URL on jobs.ge |
+| `Categories[].ListUrl` | Relative listing URL on jobs.ge (page 1; scraper paginates with `for_scroll=yes`) |
 | `ScrapeEnabled` | Kill switch for background scraping |
 | `ScrapeIntervalMinutes` | Minutes between scrape ticks (all categories per tick) |
 | `DetailPageDelayMs` | Minimum ms between HTTP request starts (global across all parallel workers) |
 | `DetailFetchConcurrency` | Max parallel detail-page fetches per category (default 3) |
 | `CategoryScrapeConcurrency` | Max categories scraped in parallel per tick (default 5) |
+| `MaxListingPages` | Safety cap on listing pages per category, including infinite-scroll batches (default 50) |
 | `ProgressUpdateInterval` | Update `scrape_runs` counts every N completed jobs (default 5) |
 | `DefaultJobsPageSize` | Default page size for `GET /api/jobs` (default 20) |
 | `MaxJobsPageSize` | Maximum allowed `pageSize` query param (default 100) |

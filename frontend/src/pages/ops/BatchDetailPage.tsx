@@ -1,6 +1,7 @@
 import { Link, useParams } from 'react-router-dom'
 import { useBatch } from '@/api/hooks'
 import { RunCounters } from '@/components/RunCounters'
+import { RunProgressBar } from '@/components/RunProgressBar'
 import { StatusBadge } from '@/components/StatusBadge'
 import { ErrorState, LoadingState } from '@/components/StateViews'
 import { Badge } from '@/components/ui/badge'
@@ -85,6 +86,7 @@ export function BatchDetailPage() {
                 <TableHead>Status</TableHead>
                 <TableHead>Started</TableHead>
                 <TableHead>Duration</TableHead>
+                <TableHead>Progress</TableHead>
                 <TableHead>Counters</TableHead>
                 <TableHead>Error</TableHead>
               </TableRow>
@@ -99,6 +101,9 @@ export function BatchDetailPage() {
                   </TableCell>
                   <TableCell>{formatDateTime(run.startedAt)}</TableCell>
                   <TableCell>{formatDuration(run.startedAt, run.finishedAt)}</TableCell>
+                  <TableCell>
+                    <RunProgressBar run={run} />
+                  </TableCell>
                   <TableCell>
                     <RunCounters run={run} />
                   </TableCell>

@@ -21,6 +21,12 @@ export function useScrapeRuns(params: ScrapeRunsQueryParams) {
   return useQuery({
     queryKey: ['scrape', 'runs', params],
     queryFn: () => api.getScrapeRuns(params),
+    refetchInterval: (query) => {
+      if (params.status === 'Running') return 5_000
+      const items = query.state.data?.items
+      if (items?.some((r) => r.status === 'Running')) return 5_000
+      return false
+    },
   })
 }
 
@@ -29,6 +35,11 @@ export function useBatch(batchId: string) {
     queryKey: ['scrape', 'batch', batchId],
     queryFn: () => api.getBatch(batchId),
     enabled: !!batchId,
+    refetchInterval: (query) => {
+      const data = query.state.data
+      if (!data) return false
+      return data.running > 0 ? 5_000 : false
+    },
   })
 }
 
