@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from './client'
-import type { JobsQueryParams, ScrapeRunsQueryParams } from './types'
+import type { JobsQueryParams, ScrapeRunsQueryParams, SearchQueryParams } from './types'
 
 export function useScrapeOverview() {
   return useQuery({
@@ -51,5 +51,14 @@ export function useJob(id: number) {
     queryKey: ['job', id],
     queryFn: () => api.getJob(id),
     enabled: id > 0,
+  })
+}
+
+export function useSearch(params: SearchQueryParams) {
+  const q = params.q?.trim() ?? ''
+  return useQuery({
+    queryKey: ['search', params],
+    queryFn: () => api.searchJobs({ ...params, q }),
+    enabled: q.length > 0,
   })
 }

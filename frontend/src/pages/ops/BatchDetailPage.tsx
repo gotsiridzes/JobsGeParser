@@ -33,7 +33,7 @@ export function BatchDetailPage() {
   return (
     <div className="space-y-6">
       <div>
-        <Link to="/" className="text-sm text-primary hover:underline">
+        <Link to="/ops" className="text-sm text-primary hover:underline">
           ← Dashboard
         </Link>
         <h1 className="text-2xl font-bold tracking-tight mt-2">Batch detail</h1>

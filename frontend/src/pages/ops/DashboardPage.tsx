@@ -109,7 +109,7 @@ export function DashboardPage() {
           <CardContent className="text-sm text-muted-foreground">
             {snapshot.currentBatchId ? (
               <Link
-                to={`/batches/${snapshot.currentBatchId}`}
+                to={`/ops/batches/${snapshot.currentBatchId}`}
                 className="text-primary hover:underline"
               >
                 View current batch
@@ -249,7 +249,7 @@ export function DashboardPage() {
                   <TableRow key={batch.batchId}>
                     <TableCell>
                       <Link
-                        to={`/batches/${batch.batchId}`}
+                        to={`/ops/batches/${batch.batchId}`}
                         className="text-primary hover:underline font-mono text-xs"
                       >
                         {batch.batchId.slice(0, 8)}…
@@ -284,7 +284,7 @@ export function DashboardPage() {
         <CardHeader>
           <CardTitle>Recent runs</CardTitle>
           <CardDescription>
-            <Link to="/runs" className="text-primary hover:underline">
+            <Link to="/ops/runs" className="text-primary hover:underline">
               View all runs
             </Link>
           </CardDescription>

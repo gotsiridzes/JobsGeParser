@@ -104,7 +104,7 @@ export function JobsPage() {
                   <TableCell>{job.id}</TableCell>
                   <TableCell>
                     <Link
-                      to={`/jobs/${job.id}`}
+                      to={`/ops/jobs/${job.id}`}
                       className="font-medium text-primary hover:underline"
                     >
                       {job.name}

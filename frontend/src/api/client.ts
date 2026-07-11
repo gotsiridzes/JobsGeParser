@@ -7,6 +7,8 @@ import type {
   ScrapeOverview,
   ScrapeRunsPage,
   ScrapeRunsQueryParams,
+  SearchPage,
+  SearchQueryParams,
 } from './types'
 
 class ApiError extends Error {
@@ -75,6 +77,16 @@ export const api = {
     ),
 
   getJob: (id: number) => fetchJson<JobDetail>(`/api/jobs/${id}`),
+
+  searchJobs: (params: SearchQueryParams) =>
+    fetchJson<SearchPage>(
+      `/api/search${buildQuery({
+        q: params.q,
+        category: params.category,
+        page: params.page,
+        pageSize: params.pageSize,
+      })}`,
+    ),
 }
 
 export { ApiError }

@@ -133,7 +133,7 @@ export function RunsPage() {
                   <TableCell>
                     {run.batchId ? (
                       <Link
-                        to={`/batches/${run.batchId}`}
+                        to={`/ops/batches/${run.batchId}`}
                         className="text-primary hover:underline font-mono text-xs"
                       >
                         {run.batchId.slice(0, 8)}…
