@@ -30,16 +30,42 @@ public class JobScrapeWorker(
 			_options.CategoryScrapeConcurrency,
 			_options.DetailFetchConcurrency);
 
+		await AbandonOrphanedRunsAsync(stoppingToken);
+
 		using var timer = new PeriodicTimer(TimeSpan.FromMinutes(_options.ScrapeIntervalMinutes));
 
-		if (_options.ScrapeOnStartup)
+		try
 		{
-			logger.LogInformation("Running scrape on startup");
-			await RunScrapeAsync(stoppingToken);
-		}
+			if (_options.ScrapeOnStartup)
+			{
+				logger.LogInformation("Running scrape on startup");
+				await RunScrapeAsync(stoppingToken);
+			}
 
-		while (await timer.WaitForNextTickAsync(stoppingToken))
-			await RunScrapeAsync(stoppingToken);
+			while (await timer.WaitForNextTickAsync(stoppingToken))
+				await RunScrapeAsync(stoppingToken);
+		}
+		finally
+		{
+			// Best-effort: graceful stop may leave runs Running if cancel raced with SaveChanges.
+			await AbandonOrphanedRunsAsync(CancellationToken.None);
+		}
+	}
+
+	private async Task AbandonOrphanedRunsAsync(CancellationToken ct)
+	{
+		using var scope = scopeFactory.CreateScope();
+		var repo = scope.ServiceProvider.GetRequiredService<Repo>();
+		var abandoned = await repo.AbandonRunningScrapeRunsAsync(
+			"Abandoned: process stopped before scrape finished",
+			ct);
+
+		if (abandoned > 0)
+		{
+			logger.LogWarning(
+				"Marked {Count} orphaned scrape run(s) as Failed (previous process stopped mid-batch)",
+				abandoned);
+		}
 	}
 
 	private async Task RunScrapeAsync(CancellationToken ct)
@@ -124,8 +150,16 @@ public class JobScrapeWorker(
 			}
 			catch (Exception ex)
 			{
-				await repo.FailScrapeRunAsync(run.Id, ex.Message, ct);
-				logger.LogError(ex, "Scrape run failed for category {Category}.", category.Slug);
+				// Use None so a cancelled stopping token cannot block writing Failed status.
+				var message = ex is OperationCanceledException
+					? "Interrupted: application stopped before scrape finished"
+					: ex.Message;
+				await repo.FailScrapeRunAsync(run.Id, message, CancellationToken.None);
+
+				if (ex is OperationCanceledException)
+					logger.LogWarning("Scrape run interrupted for category {Category}.", category.Slug);
+				else
+					logger.LogError(ex, "Scrape run failed for category {Category}.", category.Slug);
 			}
 			finally
 			{

@@ -567,6 +567,21 @@ public class Repo(
 		await _db.SaveChangesAsync(ct);
 	}
 
+	public async Task<int> AbandonRunningScrapeRunsAsync(string reason, CancellationToken ct = default)
+	{
+		var now = DateTimeOffset.UtcNow;
+		return await _db.ScrapeRuns
+			.Where(r => r.Status == ScrapeRunStatus.Running)
+			.ExecuteUpdateAsync(
+				s => s
+					.SetProperty(r => r.Status, ScrapeRunStatus.Failed)
+					.SetProperty(r => r.Phase, ScrapeRunPhase.Failed)
+					.SetProperty(r => r.ErrorMessage, reason)
+					.SetProperty(r => r.FinishedAt, now)
+					.SetProperty(r => r.ProgressUpdatedAt, now),
+				ct);
+	}
+
 	public async Task<ScrapeRunEntity?> GetScrapeRunByIdAsync(long id, CancellationToken ct = default) =>
 		await _db.ScrapeRuns
 			.AsNoTracking()

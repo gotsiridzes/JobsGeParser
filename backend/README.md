@@ -75,6 +75,7 @@ flowchart TB
    - Run counters include `detailsFetched` and `detailsSkipped` (detail HTTP skipped when metadata unchanged)
 4. HTTP requests throttled globally via `ScrapeRequestThrottle` (shared across all categories and detail workers)
 5. Categories synced from appsettings on every startup (`CategorySync`).
+6. On scrape-worker start (and again on graceful stop), any `scrape_runs` still `Running` are marked `Failed` with an abandon message. That clears orphaned rows left when the process was killed mid-batch; the next tick starts a fresh batch.
 
 Only one app instance should scrape in dev/prod - multiple instances with `ScrapeEnabled: true` duplicate HTTP load.
 

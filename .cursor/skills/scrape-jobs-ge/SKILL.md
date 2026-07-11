@@ -16,7 +16,7 @@ description: Modifies jobs.ge scraping, HtmlAgilityPack selectors, or JobsGeClie
 | `Scraping/ScrapeProgressReporter.cs` | Throttled `scrape_runs` progress updates |
 | `Scraping/GeorgianDateExtensions.cs` | Georgian month name → DateOnly parsing |
 | `Scraping/CategorySync.cs` | Sync categories from appsettings to DB on startup |
-| `Workers/JobScrapeWorker.cs` | Category Channel + parallel category consumers per tick |
+| `Workers/JobScrapeWorker.cs` | Category Channel + parallel category consumers per tick; abandons orphaned Running runs on start/stop |
 | `Workers/ScrapeWorkerState.cs` | Live tick state, `activeCategoryRuns` |
 | `Configuration/JobsGeParserOptions.cs` | Categories[], category/job concurrency, delays |
 | `Data/Repo.cs` | `UpsertAndLinkCategoryAsync` (single SaveChanges) |
