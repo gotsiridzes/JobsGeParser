@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
+using NpgsqlTypes;
 
 #nullable disable
 
@@ -17,7 +18,7 @@ namespace JobsGeParser.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.11")
+                .HasAnnotation("ProductVersion", "10.0.9")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -72,6 +73,10 @@ namespace JobsGeParser.Data.Migrations
                     b.Property<int>("Id")
                         .HasColumnType("integer");
 
+                    b.Property<string>("City")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("Company")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -84,14 +89,33 @@ namespace JobsGeParser.Data.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("text");
 
+                    b.Property<string>("DescriptionHtml")
+                        .HasColumnType("text");
+
                     b.Property<DateTimeOffset?>("DetailsFetchedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EmploymentType")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
 
                     b.Property<DateOnly>("EndDate")
                         .HasColumnType("date");
 
+                    b.Property<DateTimeOffset?>("EnrichedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("EnrichmentVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
                     b.Property<DateTimeOffset>("FirstSeenAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LanguageRequirement")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
 
                     b.Property<DateTimeOffset>("LastSeenAt")
                         .HasColumnType("timestamp with time zone");
@@ -109,12 +133,54 @@ namespace JobsGeParser.Data.Migrations
                     b.Property<DateOnly>("Published")
                         .HasColumnType("date");
 
+                    b.Property<string>("SalaryCurrency")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<decimal?>("SalaryMax")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("SalaryMin")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("SalaryPeriod")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<NpgsqlTsVector>("SearchVector")
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("tsvector")
+                        .HasComputedColumnSql("setweight(to_tsvector('simple', coalesce(\"Name\", '')), 'A') ||\r\nsetweight(to_tsvector('simple', coalesce(\"Company\", '')), 'B') ||\r\nsetweight(to_tsvector('simple', coalesce(\"Description\", '')), 'C')", true);
+
+                    b.Property<string>("Seniority")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("WorkMode")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.HasKey("Id");
 
+                    b.HasIndex("Company");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Company"), "GIN");
+                    NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex("Company"), new[] { "gin_trgm_ops" });
+
                     b.HasIndex("LastSeenAt");
+
+                    b.HasIndex("Name");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Name"), "GIN");
+                    NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex("Name"), new[] { "gin_trgm_ops" });
+
+                    b.HasIndex("SearchVector");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchVector"), "GIN");
 
                     b.ToTable("jobs", (string)null);
                 });
@@ -151,6 +217,23 @@ namespace JobsGeParser.Data.Migrations
 
                     b.Property<int>("Inserted")
                         .HasColumnType("integer");
+
+                    b.Property<int>("JobsDiscovered")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("JobsNeedingDetails")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ListingPagesFetched")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Phase")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTimeOffset?>("ProgressUpdatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("Skipped")
                         .HasColumnType("integer");

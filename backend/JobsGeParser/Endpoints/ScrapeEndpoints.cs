@@ -102,5 +102,10 @@ public static class ScrapeEndpoints
 		})
 			.WithName("GetScrapeBatchById")
 			.WithSummary("All category runs in one scrape tick");
+
+		scrape.MapPost("enrichment/backfill", async (Repo repo, int? limit, CancellationToken ct) =>
+			Results.Ok(await repo.BackfillEnrichmentAsync(limit ?? 100, ct)))
+			.WithName("BackfillEnrichment")
+			.WithSummary("Re-run structured field extraction for jobs with stale enrichment_version");
 	}
 }

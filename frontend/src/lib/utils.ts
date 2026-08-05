@@ -28,3 +28,16 @@ export function formatDuration(
 export function formatDateOnly(value: string): string {
   return new Date(value).toLocaleDateString()
 }
+
+const JOBS_GE_ORIGIN = 'https://jobs.ge'
+
+/** Resolve scraped relative hrefs (e.g. `?view=jobs&id=1`) to absolute jobs.ge URLs. */
+export function toJobsGeUrl(href: string | null | undefined): string {
+  if (!href) return JOBS_GE_ORIGIN
+  if (/^https?:\/\//i.test(href)) return href
+  try {
+    return new URL(href, JOBS_GE_ORIGIN).toString()
+  } catch {
+    return JOBS_GE_ORIGIN
+  }
+}

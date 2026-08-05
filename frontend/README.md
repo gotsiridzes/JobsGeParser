@@ -1,8 +1,13 @@
-# JobsGeParser Dashboard UI
+# JobsGeParser UI
 
-Internal operations console for the JobsGeParser API. Built with Vite, React, TypeScript, TanStack Query, and Tailwind CSS.
+Vite + React + TypeScript app with two experiences in one deployable:
 
-Part of the monorepo — backend docs: [`../backend/README.md`](../backend/README.md), repo overview: [`../README.md`](../README.md).
+- **Public seeker** (`/`, `/search`, `/jobs/:id`): description search and job detail
+- **Ops console** (`/ops/*`): scrape dashboard and job browser
+
+Part of the monorepo. Backend docs: [`../backend/README.md`](../backend/README.md), repo overview: [`../README.md`](../README.md).
+
+Listings originate from [jobs.ge](https://jobs.ge); the UI always links back to the original posting.
 
 ## Prerequisites
 
@@ -11,13 +16,13 @@ Part of the monorepo — backend docs: [`../backend/README.md`](../backend/READM
 
 ## Development
 
-Terminal 1 — start the API (from repo root):
+Terminal 1 - start the API (from repo root):
 
 ```bash
 dotnet run --project backend/JobsGeParser/JobsGeParser.csproj
 ```
 
-Terminal 2 — start the UI:
+Terminal 2 - start the UI:
 
 ```bash
 cd frontend
@@ -29,14 +34,26 @@ Open [http://localhost:5173](http://localhost:5173). API requests to `/api/*` ar
 
 ## Pages
 
+### Public
+
 | Route | Purpose |
 |-------|---------|
-| `/` | Live scrape worker dashboard (polls overview every 5–30s) |
-| `/runs` | Paginated scrape run history with filters |
-| `/batches/:batchId` | All category runs in one scrape tick |
-| `/categories` | Category health grid with job counts |
-| `/jobs` | Browse scraped jobs with search and category filter |
-| `/jobs/:id` | Job detail with full description |
+| `/` | Search-first home, category chips, latest jobs |
+| `/search` | Ranked FTS results (`?q`) or category browse (`?category`) |
+| `/jobs/:id` | Public job detail with structured chips and jobs.ge link |
+
+### Ops
+
+| Route | Purpose |
+|-------|---------|
+| `/ops` | Live scrape worker dashboard |
+| `/ops/runs` | Paginated scrape run history |
+| `/ops/batches/:batchId` | All category runs in one scrape tick |
+| `/ops/categories` | Category health grid |
+| `/ops/jobs` | Ops job browser (ILIKE title/company) |
+| `/ops/jobs/:id` | Ops job detail |
+
+Legacy paths (`/runs`, `/categories`, `/jobs`, `/batches/:id`) redirect under `/ops`.
 
 ## Build
 

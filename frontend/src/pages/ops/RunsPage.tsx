@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useScrapeRuns, useCategories } from '@/api/hooks'
 import { RunCounters } from '@/components/RunCounters'
+import { RunProgressBar } from '@/components/RunProgressBar'
 import { StatusBadge } from '@/components/StatusBadge'
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews'
 import { Button, Input, Select } from '@/components/ui/input'
@@ -116,6 +117,7 @@ export function RunsPage() {
                 <TableHead>Started</TableHead>
                 <TableHead>Duration</TableHead>
                 <TableHead>Batch</TableHead>
+                <TableHead>Progress</TableHead>
                 <TableHead>Counters</TableHead>
                 <TableHead>Error</TableHead>
               </TableRow>
@@ -133,7 +135,7 @@ export function RunsPage() {
                   <TableCell>
                     {run.batchId ? (
                       <Link
-                        to={`/batches/${run.batchId}`}
+                        to={`/ops/batches/${run.batchId}`}
                         className="text-primary hover:underline font-mono text-xs"
                       >
                         {run.batchId.slice(0, 8)}…
@@ -141,6 +143,9 @@ export function RunsPage() {
                     ) : (
                       '—'
                     )}
+                  </TableCell>
+                  <TableCell>
+                    <RunProgressBar run={run} />
                   </TableCell>
                   <TableCell>
                     <RunCounters run={run} />

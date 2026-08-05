@@ -1,16 +1,23 @@
 using JobsGeParser.Configuration;
 using JobsGeParser.Endpoints.Dtos;
+using JobsGeParser.Enrichment;
 using JobsGeParser.Models;
 using JobsGeParser.Workers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Npgsql;
 
 namespace JobsGeParser.Data;
 
-public class Repo(JobsDbContext db, IOptions<JobsGeParserOptions> options)
+public class Repo(
+	JobsDbContext db,
+	IOptions<JobsGeParserOptions> options,
+	EnrichmentService enrichment)
 {
 	private readonly JobsDbContext _db = db;
 	private readonly JobsGeParserOptions _options = options.Value;
+	private readonly EnrichmentService _enrichment = enrichment;
+	private const double TrigramSimilarityThreshold = 0.3;
 
 	public async Task<JobUpsertResult> UpsertAsync(JobApplication job, CancellationToken ct = default)
 	{
@@ -53,6 +60,25 @@ public class Repo(JobsDbContext db, IOptions<JobsGeParserOptions> options)
 		string categorySlug,
 		CancellationToken ct = default)
 	{
+		// Parallel category scrapes can race on the same jobs.ge id; retry once after PK conflict.
+		for (var attempt = 0; ; attempt++)
+		{
+			try
+			{
+				return await UpsertMetadataAndLinkCategoryCoreAsync(job, categorySlug, ct);
+			}
+			catch (DbUpdateException ex) when (attempt == 0 && IsUniqueViolation(ex))
+			{
+				_db.ChangeTracker.Clear();
+			}
+		}
+	}
+
+	private async Task<MetadataUpsertResult> UpsertMetadataAndLinkCategoryCoreAsync(
+		JobApplication job,
+		string categorySlug,
+		CancellationToken ct)
+	{
 		var now = DateTimeOffset.UtcNow;
 		var existing = await _db.Jobs.FindAsync([job.Id], ct);
 		JobUpsertResult result;
@@ -85,27 +111,78 @@ public class Repo(JobsDbContext db, IOptions<JobsGeParserOptions> options)
 		return new MetadataUpsertResult(result, needsDetailFetch);
 	}
 
-	public async Task UpsertDescriptionAsync(int jobId, string description, CancellationToken ct = default)
+	public async Task UpsertDescriptionAsync(
+		int jobId,
+		string description,
+		string? descriptionHtml = null,
+		CancellationToken ct = default)
 	{
 		var now = DateTimeOffset.UtcNow;
 		var existing = await _db.Jobs.FindAsync([jobId], ct)
 			?? throw new InvalidOperationException($"Job {jobId} not found.");
 
-		if (existing.Description != description)
+		var changed = existing.Description != description
+			|| existing.DescriptionHtml != descriptionHtml;
+
+		if (changed)
 		{
 			existing.Description = description;
+			existing.DescriptionHtml = descriptionHtml;
 			existing.UpdatedAt = now;
 		}
 
 		existing.DetailsFetchedAt = now;
 		existing.LastSeenAt = now;
+		ApplyEnrichment(existing, now);
 		await _db.SaveChangesAsync(ct);
+	}
+
+	public async Task<EnrichmentBackfillResultDto> BackfillEnrichmentAsync(
+		int limit = 100,
+		CancellationToken ct = default)
+	{
+		limit = Math.Clamp(limit, 1, 500);
+		var now = DateTimeOffset.UtcNow;
+
+		var stale = await _db.Jobs
+			.Where(j => j.Description != null && j.EnrichmentVersion < EnrichmentService.CurrentVersion)
+			.OrderBy(j => j.Id)
+			.Take(limit)
+			.ToListAsync(ct);
+
+		foreach (var job in stale)
+			ApplyEnrichment(job, now);
+
+		await _db.SaveChangesAsync(ct);
+
+		var remaining = await _db.Jobs
+			.CountAsync(j => j.Description != null && j.EnrichmentVersion < EnrichmentService.CurrentVersion, ct);
+
+		return new EnrichmentBackfillResultDto(stale.Count, remaining);
 	}
 
 	public async Task<JobUpsertResult> UpsertAndLinkCategoryAsync(
 		JobApplication job,
 		string categorySlug,
 		CancellationToken ct = default)
+	{
+		for (var attempt = 0; ; attempt++)
+		{
+			try
+			{
+				return await UpsertAndLinkCategoryCoreAsync(job, categorySlug, ct);
+			}
+			catch (DbUpdateException ex) when (attempt == 0 && IsUniqueViolation(ex))
+			{
+				_db.ChangeTracker.Clear();
+			}
+		}
+	}
+
+	private async Task<JobUpsertResult> UpsertAndLinkCategoryCoreAsync(
+		JobApplication job,
+		string categorySlug,
+		CancellationToken ct)
 	{
 		var now = DateTimeOffset.UtcNow;
 		var existing = await _db.Jobs.FindAsync([job.Id], ct);
@@ -162,12 +239,39 @@ public class Repo(JobsDbContext db, IOptions<JobsGeParserOptions> options)
 				j.CompanyLink,
 				j.Published,
 				j.EndDate,
-				j.LastSeenAt))
+				j.LastSeenAt,
+				j.SalaryMin,
+				j.SalaryMax,
+				j.SalaryCurrency,
+				j.SalaryPeriod,
+				j.City,
+				j.WorkMode,
+				j.EmploymentType,
+				j.Seniority,
+				j.LanguageRequirement))
 			.ToListAsync(ct);
 
 		var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
 
 		return new JobsPageDto(items, totalCount, page, pageSize, totalPages);
+	}
+
+	public async Task<SearchPageDto> SearchJobsAsync(
+		string q,
+		string? categorySlug,
+		int page,
+		int pageSize,
+		CancellationToken ct = default)
+	{
+		pageSize = Math.Clamp(pageSize, 1, _options.MaxJobsPageSize);
+		page = Math.Max(page, 1);
+		q = q.Trim();
+
+		var fts = await SearchWithFtsAsync(q, categorySlug, page, pageSize, ct);
+		if (fts.TotalCount > 0)
+			return fts;
+
+		return await SearchWithTrigramsAsync(q, categorySlug, page, pageSize, ct);
 	}
 
 	public async Task<JobDetailDto?> GetJobByIdAsync(int id, CancellationToken ct = default)
@@ -193,18 +297,118 @@ public class Repo(JobsDbContext db, IOptions<JobsGeParserOptions> options)
 			entity.FirstSeenAt,
 			entity.LastSeenAt,
 			entity.UpdatedAt,
-			entity.JobCategories.Select(jc => jc.CategorySlug).OrderBy(s => s).ToList());
+			entity.JobCategories.Select(jc => jc.CategorySlug).OrderBy(s => s).ToList(),
+			entity.SalaryMin,
+			entity.SalaryMax,
+			entity.SalaryCurrency,
+			entity.SalaryPeriod,
+			entity.City,
+			entity.WorkMode,
+			entity.EmploymentType,
+			entity.Seniority,
+			entity.LanguageRequirement,
+			entity.EnrichmentVersion,
+			entity.EnrichedAt);
+	}
+
+	private async Task<SearchPageDto> SearchWithFtsAsync(
+		string q,
+		string? categorySlug,
+		int page,
+		int pageSize,
+		CancellationToken ct)
+	{
+		// WebSearchToTsQuery must stay inside the expression tree; a local assignment
+		// forces client evaluation and throws at runtime.
+		var filtered = ApplyCategoryFilter(_db.Jobs.AsNoTracking(), categorySlug)
+			.Where(j => j.SearchVector.Matches(EF.Functions.WebSearchToTsQuery("simple", q)));
+
+		var totalCount = await filtered.CountAsync(ct);
+		if (totalCount == 0)
+			return new SearchPageDto([], 0, page, pageSize, 0, "fts");
+
+		var items = await filtered
+			.OrderByDescending(j => j.SearchVector.Rank(EF.Functions.WebSearchToTsQuery("simple", q)))
+			.ThenByDescending(j => j.LastSeenAt)
+			.Skip((page - 1) * pageSize)
+			.Take(pageSize)
+			.Select(j => new SearchResultDto(
+				j.Id,
+				j.Name,
+				j.Link,
+				j.Company,
+				j.CompanyLink,
+				j.Published,
+				j.EndDate,
+				j.LastSeenAt,
+				(decimal)j.SearchVector.Rank(EF.Functions.WebSearchToTsQuery("simple", q)),
+				j.SalaryMin,
+				j.SalaryMax,
+				j.SalaryCurrency,
+				j.SalaryPeriod,
+				j.City,
+				j.WorkMode,
+				j.EmploymentType,
+				j.Seniority,
+				j.LanguageRequirement))
+			.ToListAsync(ct);
+
+		var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+		return new SearchPageDto(items, totalCount, page, pageSize, totalPages, "fts");
+	}
+
+	private async Task<SearchPageDto> SearchWithTrigramsAsync(
+		string q,
+		string? categorySlug,
+		int page,
+		int pageSize,
+		CancellationToken ct)
+	{
+		var filtered = ApplyCategoryFilter(_db.Jobs.AsNoTracking(), categorySlug)
+			.Where(j =>
+				EF.Functions.TrigramsSimilarity(j.Name, q) >= TrigramSimilarityThreshold
+				|| EF.Functions.TrigramsSimilarity(j.Company, q) >= TrigramSimilarityThreshold);
+
+		var totalCount = await filtered.CountAsync(ct);
+		var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
+
+		var items = await filtered
+			.OrderByDescending(j =>
+				EF.Functions.TrigramsSimilarity(j.Name, q) >= EF.Functions.TrigramsSimilarity(j.Company, q)
+					? EF.Functions.TrigramsSimilarity(j.Name, q)
+					: EF.Functions.TrigramsSimilarity(j.Company, q))
+			.ThenByDescending(j => j.LastSeenAt)
+			.Skip((page - 1) * pageSize)
+			.Take(pageSize)
+			.Select(j => new SearchResultDto(
+				j.Id,
+				j.Name,
+				j.Link,
+				j.Company,
+				j.CompanyLink,
+				j.Published,
+				j.EndDate,
+				j.LastSeenAt,
+				(decimal)(EF.Functions.TrigramsSimilarity(j.Name, q) >= EF.Functions.TrigramsSimilarity(j.Company, q)
+					? EF.Functions.TrigramsSimilarity(j.Name, q)
+					: EF.Functions.TrigramsSimilarity(j.Company, q)),
+				j.SalaryMin,
+				j.SalaryMax,
+				j.SalaryCurrency,
+				j.SalaryPeriod,
+				j.City,
+				j.WorkMode,
+				j.EmploymentType,
+				j.Seniority,
+				j.LanguageRequirement))
+			.ToListAsync(ct);
+
+		return new SearchPageDto(items, totalCount, page, pageSize, totalPages, "trgm");
 	}
 
 	private IQueryable<JobEntity> ApplyJobFilters(JobQuery query)
 	{
-		var jobs = _db.Jobs.AsNoTracking();
-
-		if (!string.IsNullOrWhiteSpace(query.CategorySlug))
-		{
-			var slug = query.CategorySlug;
-			jobs = jobs.Where(j => j.JobCategories.Any(jc => jc.CategorySlug == slug));
-		}
+		var jobs = ApplyCategoryFilter(_db.Jobs.AsNoTracking(), query.CategorySlug);
 
 		if (!string.IsNullOrWhiteSpace(query.Search))
 		{
@@ -217,6 +421,31 @@ public class Repo(JobsDbContext db, IOptions<JobsGeParserOptions> options)
 			jobs = jobs.Where(j => EF.Functions.ILike(j.Name, "%.net%"));
 
 		return jobs;
+	}
+
+	private static IQueryable<JobEntity> ApplyCategoryFilter(IQueryable<JobEntity> jobs, string? categorySlug)
+	{
+		if (string.IsNullOrWhiteSpace(categorySlug))
+			return jobs;
+
+		var slug = categorySlug;
+		return jobs.Where(j => j.JobCategories.Any(jc => jc.CategorySlug == slug));
+	}
+
+	private void ApplyEnrichment(JobEntity entity, DateTimeOffset now)
+	{
+		var result = _enrichment.Extract(entity.Name, entity.Description, entity.DescriptionHtml);
+		entity.SalaryMin = result.SalaryMin;
+		entity.SalaryMax = result.SalaryMax;
+		entity.SalaryCurrency = result.SalaryCurrency;
+		entity.SalaryPeriod = result.SalaryPeriod;
+		entity.City = result.City;
+		entity.WorkMode = result.WorkMode;
+		entity.EmploymentType = result.EmploymentType;
+		entity.Seniority = result.Seniority;
+		entity.LanguageRequirement = result.LanguageRequirement;
+		entity.EnrichmentVersion = EnrichmentService.CurrentVersion;
+		entity.EnrichedAt = now;
 	}
 
 	public async Task<IReadOnlyList<CategoryDto>> GetCategoriesAsync(CancellationToken ct = default)
@@ -264,7 +493,9 @@ public class Repo(JobsDbContext db, IOptions<JobsGeParserOptions> options)
 			BatchId = batchId,
 			CategorySlug = categorySlug,
 			StartedAt = DateTimeOffset.UtcNow,
-			Status = ScrapeRunStatus.Running
+			Status = ScrapeRunStatus.Running,
+			Phase = ScrapeRunPhase.Discovering,
+			ProgressUpdatedAt = DateTimeOffset.UtcNow
 		};
 
 		_db.ScrapeRuns.Add(run);
@@ -280,6 +511,10 @@ public class Repo(JobsDbContext db, IOptions<JobsGeParserOptions> options)
 		int failed,
 		int detailsFetched,
 		int detailsSkipped,
+		string phase,
+		int listingPagesFetched,
+		int jobsDiscovered,
+		int jobsNeedingDetails,
 		CancellationToken ct = default)
 	{
 		var run = await _db.ScrapeRuns.FindAsync([runId], ct);
@@ -292,6 +527,11 @@ public class Repo(JobsDbContext db, IOptions<JobsGeParserOptions> options)
 		run.Failed = failed;
 		run.DetailsFetched = detailsFetched;
 		run.DetailsSkipped = detailsSkipped;
+		run.Phase = phase;
+		run.ListingPagesFetched = listingPagesFetched;
+		run.JobsDiscovered = jobsDiscovered;
+		run.JobsNeedingDetails = jobsNeedingDetails;
+		run.ProgressUpdatedAt = DateTimeOffset.UtcNow;
 		await _db.SaveChangesAsync(ct);
 	}
 
@@ -308,6 +548,8 @@ public class Repo(JobsDbContext db, IOptions<JobsGeParserOptions> options)
 		run.DetailsFetched = result.DetailsFetched;
 		run.DetailsSkipped = result.DetailsSkipped;
 		run.Status = ScrapeRunStatus.Completed;
+		run.Phase = ScrapeRunPhase.Completed;
+		run.ProgressUpdatedAt = DateTimeOffset.UtcNow;
 		await _db.SaveChangesAsync(ct);
 	}
 
@@ -319,8 +561,25 @@ public class Repo(JobsDbContext db, IOptions<JobsGeParserOptions> options)
 
 		run.FinishedAt = DateTimeOffset.UtcNow;
 		run.Status = ScrapeRunStatus.Failed;
+		run.Phase = ScrapeRunPhase.Failed;
 		run.ErrorMessage = errorMessage;
+		run.ProgressUpdatedAt = DateTimeOffset.UtcNow;
 		await _db.SaveChangesAsync(ct);
+	}
+
+	public async Task<int> AbandonRunningScrapeRunsAsync(string reason, CancellationToken ct = default)
+	{
+		var now = DateTimeOffset.UtcNow;
+		return await _db.ScrapeRuns
+			.Where(r => r.Status == ScrapeRunStatus.Running)
+			.ExecuteUpdateAsync(
+				s => s
+					.SetProperty(r => r.Status, ScrapeRunStatus.Failed)
+					.SetProperty(r => r.Phase, ScrapeRunPhase.Failed)
+					.SetProperty(r => r.ErrorMessage, reason)
+					.SetProperty(r => r.FinishedAt, now)
+					.SetProperty(r => r.ProgressUpdatedAt, now),
+				ct);
 	}
 
 	public async Task<ScrapeRunEntity?> GetScrapeRunByIdAsync(long id, CancellationToken ct = default) =>
@@ -359,8 +618,18 @@ public class Repo(JobsDbContext db, IOptions<JobsGeParserOptions> options)
 
 		var totalCount = await query.CountAsync(ct);
 
-		var items = await query
-			.OrderByDescending(r => r.StartedAt)
+		// Batch views: Running first, then Completed, then Failed; history list stays newest-first.
+		IOrderedQueryable<ScrapeRunEntity> ordered = batchId is not null
+			? query
+				.OrderBy(r =>
+					r.Status == ScrapeRunStatus.Running ? 0
+					: r.Status == ScrapeRunStatus.Completed ? 1
+					: r.Status == ScrapeRunStatus.Failed ? 2
+					: 3)
+				.ThenBy(r => r.StartedAt)
+			: query.OrderByDescending(r => r.StartedAt);
+
+		var items = await ordered
 			.Skip(offset)
 			.Take(limit)
 			.ToListAsync(ct);
@@ -389,7 +658,12 @@ public class Repo(JobsDbContext db, IOptions<JobsGeParserOptions> options)
 			var runs = await _db.ScrapeRuns
 				.AsNoTracking()
 				.Where(r => r.BatchId == id)
-				.OrderBy(r => r.StartedAt)
+				.OrderBy(r =>
+					r.Status == ScrapeRunStatus.Running ? 0
+					: r.Status == ScrapeRunStatus.Completed ? 1
+					: r.Status == ScrapeRunStatus.Failed ? 2
+					: 3)
+				.ThenBy(r => r.StartedAt)
 				.ToListAsync(ct);
 
 			if (runs.Count == 0)
@@ -497,6 +771,9 @@ public class Repo(JobsDbContext db, IOptions<JobsGeParserOptions> options)
 			link.LastSeenAt = now;
 		}
 	}
+
+	private static bool IsUniqueViolation(DbUpdateException ex) =>
+		ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
 
 	private static JobEntity MapToEntity(
 		JobApplication job,

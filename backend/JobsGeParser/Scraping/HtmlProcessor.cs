@@ -14,13 +14,25 @@ public class HtmlProcessor
 
 	private static IEnumerable<IReadOnlyList<string>> ParseListingRows(HtmlDocument document)
 	{
+		// Full category page uses regularEntries; infinite-scroll batches use table#temp_table.
 		var tableNode = document.DocumentNode
-			.SelectSingleNode("//html//body//div[@class='regularEntries']//table");
+			.SelectSingleNode("//div[@class='regularEntries']//table")
+			?? document.DocumentNode.SelectSingleNode("//table[@id='temp_table']");
 
 		if (tableNode is null)
 			yield break;
 
-		foreach (var tr in tableNode.Descendants("tr").Skip(1))
+		var isScrollFragment = string.Equals(
+			tableNode.GetAttributeValue("id", null),
+			"temp_table",
+			StringComparison.OrdinalIgnoreCase);
+
+		// Full pages include a header row; scroll fragments do not.
+		var rows = isScrollFragment
+			? tableNode.Descendants("tr")
+			: tableNode.Descendants("tr").Skip(1);
+
+		foreach (var tr in rows)
 		{
 			if (tr.Elements("td").Count() <= 1)
 				continue;
@@ -104,7 +116,10 @@ public class HtmlProcessor
 		return int.TryParse(idPart, out id);
 	}
 
-	public string? TryParseDescription(string content)
+	public string? TryParseDescription(string content) =>
+		TryParseDescriptionDetail(content)?.Text;
+
+	public DescriptionParseResult? TryParseDescriptionDetail(string content)
 	{
 		var document = LoadDocument(content);
 		var jobNode = document.GetElementbyId("job");
@@ -119,6 +134,11 @@ public class HtmlProcessor
 		if (rows.Count <= 3)
 			return null;
 
-		return rows[3].InnerText.Trim();
+		var row = rows[3];
+		var text = row.InnerText.Trim();
+		if (string.IsNullOrEmpty(text))
+			return null;
+
+		return new DescriptionParseResult(text, row.InnerHtml);
 	}
 }

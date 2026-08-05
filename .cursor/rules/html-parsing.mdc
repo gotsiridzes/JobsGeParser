@@ -7,7 +7,7 @@ alwaysApply: false
 # HTML parsing
 
 - Use HtmlAgilityPack only; keep selectors in HtmlProcessor
-- Listing: div.regularEntries table → tr rows, cells as text|href
+- Listing: div.regularEntries table (full page) or table#temp_table (for_scroll batches) → tr rows, cells as text|href
 - Detail: #job → table.dtable → 4th tr for description
 - Dates: Georgian month names via Ext.GetDate / GetMonth
 - Verify selectors against live jobs.ge HTML when changing layout logic

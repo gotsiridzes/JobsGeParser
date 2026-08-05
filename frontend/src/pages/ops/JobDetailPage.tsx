@@ -1,9 +1,10 @@
 import { Link, useParams } from 'react-router-dom'
 import { useJob } from '@/api/hooks'
+import { JobStructuredChips } from '@/components/JobStructuredChips'
 import { ErrorState, LoadingState } from '@/components/StateViews'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { formatDateOnly, formatDateTime } from '@/lib/utils'
+import { formatDateOnly, formatDateTime, toJobsGeUrl } from '@/lib/utils'
 
 export function JobDetailPage() {
   const { id } = useParams()
@@ -24,11 +25,25 @@ export function JobDetailPage() {
   return (
     <div className="space-y-6">
       <div>
-        <Link to="/jobs" className="text-sm text-primary hover:underline">
+        <Link to="/ops/jobs" className="text-sm text-primary hover:underline">
           ← Jobs
         </Link>
         <h1 className="text-2xl font-bold tracking-tight mt-2">{data.name}</h1>
         <p className="text-muted-foreground mt-1">{data.company}</p>
+        <div className="mt-3">
+          <JobStructuredChips
+            salaryMin={data.salaryMin}
+            salaryMax={data.salaryMax}
+            salaryCurrency={data.salaryCurrency}
+            salaryPeriod={data.salaryPeriod}
+            city={data.city}
+            workMode={data.workMode}
+            employmentType={data.employmentType}
+            seniority={data.seniority}
+            languageRequirement={data.languageRequirement}
+            categorySlugs={data.categorySlugs}
+          />
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -67,6 +82,10 @@ export function JobDetailPage() {
                 <span>{formatDateTime(data.updatedAt)}</span>
               </div>
             )}
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Enrichment</span>
+              <span>v{data.enrichmentVersion}</span>
+            </div>
           </CardContent>
         </Card>
 
@@ -83,7 +102,7 @@ export function JobDetailPage() {
               ))}
             </div>
             <a
-              href={data.link}
+              href={toJobsGeUrl(data.link)}
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm text-primary hover:underline block"
@@ -92,7 +111,7 @@ export function JobDetailPage() {
             </a>
             {data.companyLink && (
               <a
-                href={data.companyLink}
+                href={toJobsGeUrl(data.companyLink)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-primary hover:underline block"

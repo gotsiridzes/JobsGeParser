@@ -3,12 +3,14 @@ description: Frontend dashboard conventions
 globs: frontend/**/*
 ---
 
-# Frontend dashboard
+# Frontend
 
 - Vite + React + TypeScript in `frontend/`
-- API client in `frontend/src/api/` — types mirror backend DTOs (`ScrapeManagementDtos`, `JobsApiDtos`)
+- Two layouts: `PublicLayout` (seeker: `/`, `/search`, `/jobs/:id`) and `OpsLayout` (`/ops/*`)
+- Pages: `frontend/src/pages/public/` and `frontend/src/pages/ops/`
+- API client in `frontend/src/api/` - types mirror backend DTOs; `useSearch` → `GET /api/search`
 - TanStack Query for data fetching; poll scrape overview 5s when active, 30s otherwise
 - Dev proxy: `/api` → `http://localhost:50423` in `frontend/vite.config.ts`
-- Pages in `frontend/src/pages/`; shared components in `frontend/src/components/`
-- Do not add write endpoints or auth in v1 — UI is read-only against existing API
+- Shared components in `frontend/src/components/`
+- Do not add write endpoints or auth in v1 - UI is read-only against existing API (except ops enrichment backfill is API-only)
 - After changes: `npm run build` is sufficient. Do not start `npm run dev` unless the user asks.

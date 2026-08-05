@@ -1,4 +1,5 @@
 export type ScrapeRunStatus = 'Running' | 'Completed' | 'Failed'
+export type ScrapeRunPhase = 'Discovering' | 'Enriching' | 'Completed' | 'Failed'
 
 export interface ScrapeRun {
   id: number
@@ -12,6 +13,11 @@ export interface ScrapeRun {
   failed: number
   detailsFetched: number
   detailsSkipped: number
+  phase: ScrapeRunPhase
+  listingPagesFetched: number
+  jobsDiscovered: number
+  jobsNeedingDetails: number
+  progressUpdatedAt: string | null
   status: ScrapeRunStatus
   errorMessage: string | null
 }
@@ -78,7 +84,19 @@ export interface Category {
   latestScrapeRun: ScrapeRun | null
 }
 
-export interface JobListItem {
+export interface JobStructuredFields {
+  salaryMin: number | null
+  salaryMax: number | null
+  salaryCurrency: string | null
+  salaryPeriod: string | null
+  city: string | null
+  workMode: string | null
+  employmentType: string | null
+  seniority: string | null
+  languageRequirement: string | null
+}
+
+export interface JobListItem extends JobStructuredFields {
   id: number
   name: string
   link: string
@@ -89,7 +107,7 @@ export interface JobListItem {
   lastSeenAt: string
 }
 
-export interface JobDetail {
+export interface JobDetail extends JobStructuredFields {
   id: number
   name: string
   link: string
@@ -103,6 +121,8 @@ export interface JobDetail {
   lastSeenAt: string
   updatedAt: string | null
   categorySlugs: string[]
+  enrichmentVersion: number
+  enrichedAt: string | null
 }
 
 export interface JobsPage {
@@ -118,6 +138,34 @@ export interface JobsQueryParams {
   pageSize?: number
   category?: string
   q?: string
+}
+
+export interface SearchResult extends JobStructuredFields {
+  id: number
+  name: string
+  link: string
+  company: string
+  companyLink: string | null
+  published: string
+  endDate: string
+  lastSeenAt: string
+  rank: number | null
+}
+
+export interface SearchPage {
+  items: SearchResult[]
+  totalCount: number
+  page: number
+  pageSize: number
+  totalPages: number
+  mode: 'fts' | 'trgm' | string
+}
+
+export interface SearchQueryParams {
+  q?: string
+  category?: string
+  page?: number
+  pageSize?: number
 }
 
 export interface ScrapeRunsQueryParams {

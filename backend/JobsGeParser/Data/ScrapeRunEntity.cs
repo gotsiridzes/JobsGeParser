@@ -26,6 +26,16 @@ public class ScrapeRunEntity
 
 	public int DetailsSkipped { get; set; }
 
+	public string Phase { get; set; } = null!;
+
+	public int ListingPagesFetched { get; set; }
+
+	public int JobsDiscovered { get; set; }
+
+	public int JobsNeedingDetails { get; set; }
+
+	public DateTimeOffset? ProgressUpdatedAt { get; set; }
+
 	public string Status { get; set; } = null!;
 
 	public string? ErrorMessage { get; set; }

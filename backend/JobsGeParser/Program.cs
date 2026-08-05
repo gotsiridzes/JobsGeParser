@@ -43,6 +43,7 @@ if (corsOptions.AllowedOrigins.Length > 0)
 	app.UseCors("Frontend");
 
 app.RegisterJobsEndpoints();
+app.RegisterSearchEndpoints();
 app.RegisterScrapeEndpoints();
 
 logger.LogInformation(

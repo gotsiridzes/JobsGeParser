@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from './client'
-import type { JobsQueryParams, ScrapeRunsQueryParams } from './types'
+import type { JobsQueryParams, ScrapeRunsQueryParams, SearchQueryParams } from './types'
 
 export function useScrapeOverview() {
   return useQuery({
@@ -21,6 +21,12 @@ export function useScrapeRuns(params: ScrapeRunsQueryParams) {
   return useQuery({
     queryKey: ['scrape', 'runs', params],
     queryFn: () => api.getScrapeRuns(params),
+    refetchInterval: (query) => {
+      if (params.status === 'Running') return 5_000
+      const items = query.state.data?.items
+      if (items?.some((r) => r.status === 'Running')) return 5_000
+      return false
+    },
   })
 }
 
@@ -29,6 +35,11 @@ export function useBatch(batchId: string) {
     queryKey: ['scrape', 'batch', batchId],
     queryFn: () => api.getBatch(batchId),
     enabled: !!batchId,
+    refetchInterval: (query) => {
+      const data = query.state.data
+      if (!data) return false
+      return data.running > 0 ? 5_000 : false
+    },
   })
 }
 
@@ -51,5 +62,14 @@ export function useJob(id: number) {
     queryKey: ['job', id],
     queryFn: () => api.getJob(id),
     enabled: id > 0,
+  })
+}
+
+export function useSearch(params: SearchQueryParams) {
+  const q = params.q?.trim() ?? ''
+  return useQuery({
+    queryKey: ['search', params],
+    queryFn: () => api.searchJobs({ ...params, q }),
+    enabled: q.length > 0,
   })
 }

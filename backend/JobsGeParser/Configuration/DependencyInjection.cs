@@ -1,4 +1,5 @@
 using JobsGeParser.Data;
+using JobsGeParser.Enrichment;
 using JobsGeParser.Scraping;
 using JobsGeParser.Workers;
 using Microsoft.EntityFrameworkCore;
@@ -40,14 +41,16 @@ public static class DependencyInjection
 		{
 			var options = sp.GetRequiredService<IOptions<JobsGeParserOptions>>().Value;
 			c.BaseAddress = new Uri(options.BaseUrl);
-			c.Timeout = TimeSpan.FromSeconds(30);
+			c.Timeout = TimeSpan.FromSeconds(options.HttpClientTimeoutSeconds);
 		});
 
 		self.AddSingleton<ScrapeWorkerState>();
 		self.AddSingleton<ScrapeRequestThrottle>();
+		self.AddSingleton<ScrapeBatchRunner>();
 
 		self.AddScoped<JobsGeClient>()
 			.AddSingleton<HtmlProcessor>()
+			.AddSingleton<EnrichmentService>()
 			.AddScoped<Repo>();
 
 		self.AddHostedService<JobScrapeWorker>();
