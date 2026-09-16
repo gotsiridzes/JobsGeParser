@@ -76,6 +76,7 @@ public sealed class AlertsFixture : IAsyncLifetime
 				["Alerts:Enabled"] = "true",
 				["Alerts:TokenSecret"] = TokenSecret,
 				["Alerts:PublicBaseUrl"] = "https://example.test",
+				["Alerts:ApiBaseUrl"] = "https://api.example.test",
 				// Events are claimable immediately; the settle delay is a production nicety that
 				// would otherwise make every test wait a minute.
 				["Alerts:EventSettleDelaySeconds"] = "0",

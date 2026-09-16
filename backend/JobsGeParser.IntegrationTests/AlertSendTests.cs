@@ -196,7 +196,8 @@ public class AlertSendTests(AlertsFixture fixture)
 		var sent = Assert.Single(fixture.Email.Sent);
 
 		Assert.Contains("Senior Backend Developer", sent.BodyText, StringComparison.Ordinal);
-		Assert.Contains("https://example.test/a/u/", sent.UnsubscribeUrl!, StringComparison.Ordinal);
+		// The List-Unsubscribe target is the API, because mail clients POST to it directly.
+		Assert.StartsWith("https://api.example.test/a/u/", sent.UnsubscribeUrl!, StringComparison.Ordinal);
 		Assert.False(string.IsNullOrWhiteSpace(sent.Subject));
 	}
 }

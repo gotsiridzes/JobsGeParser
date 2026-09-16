@@ -14,6 +14,9 @@ public sealed class AlertOptionsValidator : IValidateOptions<AlertOptions>
 		if (!Uri.TryCreate(options.PublicBaseUrl, UriKind.Absolute, out _))
 			return ValidateOptionsResult.Fail("Alerts.PublicBaseUrl must be an absolute URL.");
 
+		if (!Uri.TryCreate(options.ApiBaseUrl, UriKind.Absolute, out _))
+			return ValidateOptionsResult.Fail("Alerts.ApiBaseUrl must be an absolute URL.");
+
 		// A bad timezone must fail at startup, not at 09:00 on a Tuesday.
 		if (!TimeZoneInfo.TryFindSystemTimeZoneById(options.DefaultTimeZoneId, out _))
 			return ValidateOptionsResult.Fail($"Alerts.DefaultTimeZoneId is not a known timezone: {options.DefaultTimeZoneId}");

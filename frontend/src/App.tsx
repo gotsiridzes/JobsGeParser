@@ -10,6 +10,10 @@ import { RunsPage } from '@/pages/ops/RunsPage'
 import { HomePage } from '@/pages/public/HomePage'
 import { PublicJobDetailPage } from '@/pages/public/PublicJobDetailPage'
 import { SearchPage } from '@/pages/public/SearchPage'
+import { AlertBuilderPage } from '@/pages/public/alerts/AlertBuilderPage'
+import { AlertConfirmPage } from '@/pages/public/alerts/AlertConfirmPage'
+import { AlertManagePage } from '@/pages/public/alerts/AlertManagePage'
+import { AlertUnsubscribePage } from '@/pages/public/alerts/AlertUnsubscribePage'
 
 function LegacyBatchRedirect() {
   const { batchId } = useParams()
@@ -24,6 +28,11 @@ export default function App() {
           <Route index element={<HomePage />} />
           <Route path="search" element={<SearchPage />} />
           <Route path="jobs/:id" element={<PublicJobDetailPage />} />
+          <Route path="alerts/new" element={<AlertBuilderPage />} />
+          {/* Email link targets. Static c/u segments rank above :token. */}
+          <Route path="a/c/:token" element={<AlertConfirmPage />} />
+          <Route path="a/u/:token" element={<AlertUnsubscribePage />} />
+          <Route path="a/:token" element={<AlertManagePage />} />
         </Route>
 
         <Route path="ops" element={<OpsLayout />}>

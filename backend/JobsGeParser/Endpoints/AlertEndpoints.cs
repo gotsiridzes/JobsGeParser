@@ -215,6 +215,19 @@ public static class AlertEndpoints
 					if (errors.Count > 0)
 						return Results.BadRequest(new AlertValidationErrorDto(errors));
 
+					// Checked up front so the unique index never surfaces as a 500.
+					var duplicate = await repo.FindDuplicateSubscriptionAsync(
+						subscriber.Id,
+						criteria.ComputeHash(),
+						ct,
+						excludeId: subscription.Id);
+
+					if (duplicate is not null)
+					{
+						return Results.Conflict(new AlertValidationErrorDto(
+							["You already have an alert with this filter."]));
+					}
+
 					ApplyCriteria(subscription, criteria);
 				}
 

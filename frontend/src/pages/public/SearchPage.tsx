@@ -1,6 +1,7 @@
 import { FormEvent, useMemo, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Search } from 'lucide-react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { BellPlus, Search } from 'lucide-react'
+import { useAlertsAvailable } from '@/api/alertHooks'
 import { useCategories, useJobs, useSearch } from '@/api/hooks'
 import { JobResultCard } from '@/components/JobResultCard'
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews'
@@ -17,6 +18,7 @@ export function SearchPage() {
 
   const [input, setInput] = useState(q)
   const { data: categories } = useCategories()
+  const alerts = useAlertsAvailable()
 
   const isBrowse = !q && !!category
   const searchState = useMemo(() => ({ q: q || undefined, category: category || undefined, page }), [q, category, page])
@@ -127,6 +129,18 @@ export function SearchPage() {
             {mode ? ` · ${mode}` : ''}
           </p>
         </div>
+        {alerts.isSuccess && (
+          <Link
+            to={`/alerts/new?${new URLSearchParams({
+              ...(q ? { q } : {}),
+              ...(category ? { category } : {}),
+            }).toString()}`}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-input px-3 h-8 text-xs font-medium hover:bg-accent"
+          >
+            <BellPlus className="h-3.5 w-3.5" aria-hidden />
+            Alert me about new jobs like these
+          </Link>
+        )}
       </div>
 
       {active.isLoading && <LoadingState />}

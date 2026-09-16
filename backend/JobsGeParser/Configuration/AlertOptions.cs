@@ -13,6 +13,12 @@ public class AlertOptions
 	public string PublicBaseUrl { get; set; } = "http://localhost:5173";
 
 	/// <summary>
+	/// Base URL of this API, used for the one-click unsubscribe link that mail clients POST to
+	/// directly. Human-facing links use <see cref="PublicBaseUrl"/>.
+	/// </summary>
+	public string ApiBaseUrl { get; set; } = "http://localhost:50423";
+
+	/// <summary>
 	/// IANA timezone assigned to a subscriber who does not supply one.
 	/// </summary>
 	public string DefaultTimeZoneId { get; set; } = "Asia/Tbilisi";

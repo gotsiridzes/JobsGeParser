@@ -146,7 +146,8 @@ All under the `Alerts` section, disabled by default with console providers, so a
 |---------|---------|
 | `Enabled` | Master switch. When false no outbox row is written and no alert worker starts |
 | `TokenSecret` | Derives manage and unsubscribe tokens. **Never in appsettings**; changing it invalidates every existing link |
-| `PublicBaseUrl` | Base for the `/a/...` capability links that go into messages |
+| `PublicBaseUrl` | Base for the human `/a/...` links in messages (confirm, manage, unsubscribe). Point it at the frontend |
+| `ApiBaseUrl` | Base of this API. Used only for the RFC 8058 one-click unsubscribe target in the `List-Unsubscribe` header, because mail clients POST there with no JavaScript |
 | `DefaultTimeZoneId` | IANA zone for a subscriber who does not supply one (default `Asia/Tbilisi`) |
 | `EventSettleDelaySeconds` | Delay before an event is claimable, letting a scrape tick finish linking (default 60) |
 | `OutboxDrainIntervalSeconds` / `OutboxBatchSize` | Drain cadence and batch size |
@@ -218,7 +219,7 @@ Registered only when `Alerts:Enabled` is true. The capability token goes in an `
 | `DELETE` | `/api/alerts/subscriptions/{id}` | Delete one subscription |
 | `POST` | `/api/alerts/unsubscribe` | Stop one subscription, or every subscription for the address |
 
-Capability link targets, served as plain HTML so they work in a mail client's in-app browser:
+Capability link targets. The frontend serves the human versions at the same paths on `PublicBaseUrl`; these plain HTML API pages are the fallback when no frontend is deployed, and `POST /a/u/{token}` is always the one-click target:
 
 | Method | Route | Behavior |
 |--------|-------|----------|
@@ -256,7 +257,7 @@ With `Alerts:Email:Provider` set to `Console` (the default), `LoggingAlertChanne
 
 1. Set `Alerts:Enabled` to true and `dotnet user-secrets set "Alerts:TokenSecret" "<random value>"`.
 2. `POST /api/alerts/subscriptions`.
-3. Read the confirmation URL out of the console log and `POST /api/alerts/confirm` with its token.
+3. Read the confirmation URL out of the console log and open it in the frontend (or `POST /api/alerts/confirm` with its token).
 4. Run a scrape; the instant alert body prints to the console.
 
 ## Database

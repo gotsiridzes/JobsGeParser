@@ -213,7 +213,7 @@ public sealed class AlertSendPump(
 
 	private OutboundAlertMessage ToOutbound(AlertMessageEntity message)
 	{
-		var unsubscribeUrl = links.Unsubscribe(
+		var unsubscribeUrl = links.OneClickUnsubscribe(
 			AlertTokens.DeriveManageToken(message.SubscriberId, _options.TokenSecret));
 
 		return new OutboundAlertMessage(

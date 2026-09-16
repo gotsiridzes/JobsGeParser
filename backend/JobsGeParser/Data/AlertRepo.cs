@@ -143,14 +143,19 @@ public class AlertRepo(
 				&& s.Status != AlertSubscriptionStatus.Deleted,
 			ct);
 
+	/// <param name="excludeId">
+	/// The subscription being edited, so saving an unchanged filter does not collide with itself.
+	/// </param>
 	public Task<AlertSubscriptionEntity?> FindDuplicateSubscriptionAsync(
 		Guid subscriberId,
 		byte[] criteriaHash,
-		CancellationToken ct = default) =>
+		CancellationToken ct = default,
+		Guid? excludeId = null) =>
 		_db.AlertSubscriptions.FirstOrDefaultAsync(
 			s => s.SubscriberId == subscriberId
 				&& s.CriteriaHash == criteriaHash
-				&& s.Status != AlertSubscriptionStatus.Deleted,
+				&& s.Status != AlertSubscriptionStatus.Deleted
+				&& (excludeId == null || s.Id != excludeId),
 			ct);
 
 	public async Task<IReadOnlyList<AlertSubscriptionEntity>> GetSubscriptionsAsync(

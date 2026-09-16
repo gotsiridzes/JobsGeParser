@@ -87,3 +87,14 @@ All under `Alerts`, disabled by default with console providers, so a fresh clone
 - No new NuGet packages. Rate limiting, `Base64Url`, `Guid.CreateVersion7()` and `TimeProvider` are all in box.
 - The `AddAlerts` migration is purely additive. Nothing existing is altered.
 - `ScrapePerformanceFixture.ResetScrapeDataAsync` truncates `jobs ... CASCADE`, which now also clears `job_events` and `alert_deliveries`. That is intended and needs no fixture change.
+
+## Frontend
+
+The seeker UI lives in `frontend/`. The owner chose frontend-owned link pages, two entry points (a button on `/search` and a builder at `/alerts/new`), and no browser storage for the manage token.
+
+- **F1.** `Alerts:ApiBaseUrl` splits the one-click unsubscribe link (API) from human links (frontend). `PATCH` returns 409 for a duplicate filter instead of a 500. The API client gains write support and error bodies, plus alert types and hooks. **Shipped.**
+- **F2.** UI kit additions (`Field`, `ToggleChips`, `Textarea`, Button sizes and disabled state), `AlertCriteriaForm`, `CadencePicker`, `AlertBuilderPage` with a debounced live preview, and the search page button. **Shipped.**
+- **F3.** Confirm, manage and unsubscribe pages under `/a/*`, with `useNoReferrer` and a StrictMode-safe single confirm call. **Shipped.**
+- **F4.** Rules and READMEs. **Shipped.**
+
+The feature flag is `GET /api/alerts/criteria-options`: when alerts are disabled the endpoint does not exist and every entry point stays hidden.
