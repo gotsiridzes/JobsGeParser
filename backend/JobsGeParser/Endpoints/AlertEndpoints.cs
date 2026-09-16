@@ -26,6 +26,7 @@ public static class AlertEndpoints
 		RegisterDiscovery(alerts);
 		RegisterSubscribe(alerts);
 		RegisterManagement(alerts);
+		RegisterOps(alerts);
 	}
 
 	private static void RegisterDiscovery(RouteGroupBuilder alerts)
@@ -255,6 +256,174 @@ public static class AlertEndpoints
 			.WithSummary("Delete one subscription");
 	}
 
+	/// <summary>
+	/// The ops console's view across every subscriber. No token, no rate limit - the ops console
+	/// has no auth anywhere yet (same as the scrape endpoints), so this is a visible decision
+	/// rather than an accident. Do not expose this group before ops gets real auth: it returns
+	/// unmasked email addresses with no access control.
+	/// </summary>
+	private static void RegisterOps(RouteGroupBuilder alerts)
+	{
+		var ops = alerts.MapGroup("ops/subscriptions");
+
+		ops.MapGet("", async (
+				string? status,
+				string? cadence,
+				string? channel,
+				string? q,
+				int? page,
+				int? pageSize,
+				AlertRepo repo,
+				CancellationToken ct) =>
+			{
+				AlertCadence? cadenceFilter = null;
+				if (cadence is not null)
+				{
+					if (!Enum.TryParse<AlertCadence>(cadence, ignoreCase: true, out var parsedCadence))
+						return Results.BadRequest(new AlertValidationErrorDto([$"Unknown cadence: {cadence}"]));
+
+					cadenceFilter = parsedCadence;
+				}
+
+				AlertChannelKind? channelFilter = null;
+				if (channel is not null)
+				{
+					if (!Enum.TryParse<AlertChannelKind>(channel, ignoreCase: true, out var parsedChannel))
+						return Results.BadRequest(new AlertValidationErrorDto([$"Unknown channel: {channel}"]));
+
+					channelFilter = parsedChannel;
+				}
+
+				var effectivePage = page ?? 1;
+				var effectivePageSize = pageSize ?? 25;
+
+				var (items, subscribers, totalCount) = await repo.GetAllSubscriptionsAsync(
+					status, cadenceFilter, channelFilter, q, effectivePage, effectivePageSize, ct);
+
+				var stats = await repo.GetSubscriptionStatsForAsync([.. items.Select(i => i.Id)], ct);
+
+				var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)effectivePageSize);
+
+				return Results.Ok(new AlertOpsSubscriptionsPageDto(
+					[.. items.Select(s => ToOpsDto(s, subscribers[s.SubscriberId], stats))],
+					totalCount,
+					effectivePage,
+					effectivePageSize,
+					totalPages));
+			})
+			.WithName("GetOpsAlertSubscriptions")
+			.WithSummary("Every alert subscription across every subscriber, filtered and paged");
+
+		ops.MapGet("{id:guid}", async (Guid id, AlertRepo repo, CancellationToken ct) =>
+			{
+				var subscription = await repo.FindSubscriptionByIdAsync(id, ct);
+				if (subscription is null)
+					return Results.NotFound();
+
+				var stats = await repo.GetSubscriptionStatsForAsync([id], ct);
+				return Results.Ok(ToOpsDto(subscription, subscription.Subscriber!, stats));
+			})
+			.WithName("GetOpsAlertSubscription")
+			.WithSummary("One alert subscription by id, unscoped by subscriber");
+
+		ops.MapPatch("{id:guid}", async (
+				Guid id,
+				UpdateAlertSubscriptionRequest request,
+				AlertRepo repo,
+				AlertCriteriaValidator validator,
+				CancellationToken ct) =>
+			{
+				var subscription = await repo.FindSubscriptionByIdAsync(id, ct);
+				if (subscription is null)
+					return Results.NotFound();
+
+				if (request.Cadence is { } rawCadence)
+				{
+					if (!Enum.TryParse<AlertCadence>(rawCadence, ignoreCase: true, out var cadence))
+						return Results.BadRequest(new AlertValidationErrorDto([$"Unknown cadence: {rawCadence}"]));
+
+					subscription.Cadence = cadence;
+				}
+
+				if (request.Name is { } name)
+				{
+					if (string.IsNullOrWhiteSpace(name) || name.Length > 100)
+						return Results.BadRequest(new AlertValidationErrorDto(["Name is required and cannot exceed 100 characters."]));
+
+					subscription.Name = name.Trim();
+				}
+
+				if (request.DigestSendLocalTime is { } sendAt)
+					subscription.DigestSendLocalTime = sendAt;
+
+				if (request.Criteria is { } criteriaDto)
+				{
+					var criteria = criteriaDto.ToCriteria().Canonicalize();
+					var errors = validator.Validate(criteria, await repo.GetKnownCategorySlugsAsync(ct));
+					if (errors.Count > 0)
+						return Results.BadRequest(new AlertValidationErrorDto(errors));
+
+					var duplicate = await repo.FindDuplicateSubscriptionAsync(
+						subscription.SubscriberId,
+						criteria.ComputeHash(),
+						ct,
+						excludeId: subscription.Id);
+
+					if (duplicate is not null)
+					{
+						return Results.Conflict(new AlertValidationErrorDto(
+							["This subscriber already has an alert with this filter."]));
+					}
+
+					ApplyCriteria(subscription, criteria);
+				}
+
+				subscription.UpdatedAt = DateTimeOffset.UtcNow;
+				await repo.SaveChangesAsync(ct);
+
+				return Results.NoContent();
+			})
+			.WithName("UpdateOpsAlertSubscription")
+			.WithSummary("Rename, re-cadence or re-filter a subscription from ops, no token needed");
+
+		ops.MapPost("{id:guid}/pause", (Guid id, AlertRepo repo, CancellationToken ct) =>
+				SetOpsStatusAsync(id, repo, AlertSubscriptionStatus.Paused, resetMatchWindow: false, ct))
+			.WithName("PauseOpsAlertSubscription")
+			.WithSummary("Stop alerting on this subscription without deleting it");
+
+		ops.MapPost("{id:guid}/resume", (Guid id, AlertRepo repo, CancellationToken ct) =>
+				SetOpsStatusAsync(id, repo, AlertSubscriptionStatus.Active, resetMatchWindow: true, ct))
+			.WithName("ResumeOpsAlertSubscription")
+			.WithSummary("Resume alerting, starting from now rather than replaying the backlog");
+
+		ops.MapDelete("{id:guid}", (Guid id, AlertRepo repo, CancellationToken ct) =>
+				SetOpsStatusAsync(id, repo, AlertSubscriptionStatus.Deleted, resetMatchWindow: false, ct))
+			.WithName("DeleteOpsAlertSubscription")
+			.WithSummary("Delete one subscription");
+	}
+
+	private static async Task<IResult> SetOpsStatusAsync(
+		Guid id,
+		AlertRepo repo,
+		string status,
+		bool resetMatchWindow,
+		CancellationToken ct)
+	{
+		var subscription = await repo.FindSubscriptionByIdAsync(id, ct);
+		if (subscription is null)
+			return Results.NotFound();
+
+		var now = DateTimeOffset.UtcNow;
+		subscription.Status = status;
+		subscription.UpdatedAt = now;
+
+		if (resetMatchWindow)
+			subscription.MatchFromAt = now;
+
+		await repo.SaveChangesAsync(ct);
+		return Results.NoContent();
+	}
+
 	private static async Task<IResult> SetStatusAsync(
 		Guid id,
 		HttpContext context,
@@ -319,6 +488,30 @@ public static class AlertEndpoints
 			subscription.DigestSendLocalTime,
 			subscriber.Channel.ToString(),
 			AlertAddressMasking.Mask(subscriber.Channel, subscriber.Address),
+			subscription.CreatedAt,
+			subscription.MatchFromAt,
+			stat.LastSentAt,
+			stat.Sent,
+			AlertCriteriaDto.From(AlertCriteria.From(subscription)));
+	}
+
+	private static AlertOpsSubscriptionDto ToOpsDto(
+		AlertSubscriptionEntity subscription,
+		AlertSubscriberEntity subscriber,
+		IReadOnlyDictionary<Guid, (int Sent, DateTimeOffset? LastSentAt)> stats)
+	{
+		stats.TryGetValue(subscription.Id, out var stat);
+
+		return new AlertOpsSubscriptionDto(
+			subscription.Id,
+			subscription.Name,
+			subscription.Status,
+			subscription.Cadence.ToString(),
+			subscription.DigestSendLocalTime,
+			subscriber.Id,
+			subscriber.Channel.ToString(),
+			subscriber.Address,
+			subscriber.Status,
 			subscription.CreatedAt,
 			subscription.MatchFromAt,
 			stat.LastSentAt,

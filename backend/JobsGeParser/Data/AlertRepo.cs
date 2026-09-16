@@ -183,6 +183,87 @@ public class AlertRepo(
 		return rows.ToDictionary(r => r.SubscriptionId, r => (r.Sent, (DateTimeOffset?)r.LastSentAt));
 	}
 
+	// Ops (unscoped by subscriber - the ops console is trusted, unlike every method above)
+
+	/// <summary>
+	/// Every subscription across every subscriber, filtered and paged. Deleted subscriptions are
+	/// hidden by default, same as the subscriber-facing view, unless "Deleted" is explicitly asked
+	/// for.
+	/// </summary>
+	public async Task<(IReadOnlyList<AlertSubscriptionEntity> Items, IReadOnlyDictionary<Guid, AlertSubscriberEntity> Subscribers, int TotalCount)>
+		GetAllSubscriptionsAsync(
+			string? status,
+			AlertCadence? cadence,
+			AlertChannelKind? channel,
+			string? search,
+			int page,
+			int pageSize,
+			CancellationToken ct = default)
+	{
+		page = Math.Max(page, 1);
+		pageSize = Math.Clamp(pageSize, 1, 200);
+
+		var query = _db.AlertSubscriptions.AsNoTracking().AsQueryable();
+
+		query = status is not null
+			? query.Where(s => s.Status == status)
+			: query.Where(s => s.Status != AlertSubscriptionStatus.Deleted);
+
+		if (cadence is not null)
+			query = query.Where(s => s.Cadence == cadence);
+
+		if (channel is not null)
+			query = query.Where(s => s.Subscriber!.Channel == channel);
+
+		if (!string.IsNullOrWhiteSpace(search))
+		{
+			var pattern = $"%{search.Trim()}%";
+			query = query.Where(s => EF.Functions.ILike(s.Name, pattern) || EF.Functions.ILike(s.Subscriber!.Address, pattern));
+		}
+
+		var totalCount = await query.CountAsync(ct);
+
+		var items = await query
+			.OrderByDescending(s => s.CreatedAt)
+			.Skip((page - 1) * pageSize)
+			.Take(pageSize)
+			.ToListAsync(ct);
+
+		var subscribers = await GetSubscribersAsync([.. items.Select(s => s.SubscriberId).Distinct()], ct);
+
+		return (items, subscribers, totalCount);
+	}
+
+	/// <summary>
+	/// Looks a subscription up by id alone, with no subscriber scoping. Only the ops surface
+	/// should call this; every subscriber-facing method requires the owning subscriberId too.
+	/// </summary>
+	public Task<AlertSubscriptionEntity?> FindSubscriptionByIdAsync(Guid id, CancellationToken ct = default) =>
+		_db.AlertSubscriptions
+			.Include(s => s.Subscriber)
+			.FirstOrDefaultAsync(s => s.Id == id && s.Status != AlertSubscriptionStatus.Deleted, ct);
+
+	/// <summary>
+	/// Send stats for a specific set of subscriptions, the ops-list equivalent of
+	/// <see cref="GetSubscriptionStatsAsync"/> which is scoped to one subscriber's own rows.
+	/// </summary>
+	public async Task<IReadOnlyDictionary<Guid, (int Sent, DateTimeOffset? LastSentAt)>> GetSubscriptionStatsForAsync(
+		IReadOnlyList<Guid> subscriptionIds,
+		CancellationToken ct = default)
+	{
+		if (subscriptionIds.Count == 0)
+			return new Dictionary<Guid, (int, DateTimeOffset?)>();
+
+		var rows = await _db.AlertDeliveries
+			.AsNoTracking()
+			.Where(d => subscriptionIds.Contains(d.SubscriptionId) && d.Status == AlertDeliveryStatus.Sent)
+			.GroupBy(d => d.SubscriptionId)
+			.Select(g => new { SubscriptionId = g.Key, Sent = g.Count(), LastSentAt = g.Max(d => d.MatchedAt) })
+			.ToListAsync(ct);
+
+		return rows.ToDictionary(r => r.SubscriptionId, r => (r.Sent, (DateTimeOffset?)r.LastSentAt));
+	}
+
 	// Messages
 
 	public AlertMessageEntity AddMessage(AlertMessageEntity message)

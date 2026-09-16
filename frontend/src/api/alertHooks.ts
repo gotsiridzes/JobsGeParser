@@ -1,6 +1,11 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
-import type { AlertCriteria, CreateAlertRequest, UpdateAlertRequest } from './alertTypes'
+import type {
+  AlertCriteria,
+  CreateAlertRequest,
+  OpsAlertsQueryParams,
+  UpdateAlertRequest,
+} from './alertTypes'
 import { isCriteriaEmpty } from '@/components/alerts/criteria'
 
 const managedKey = (token: string) => ['alerts', 'managed', token] as const
@@ -82,4 +87,54 @@ export function useDeleteAlert(token: string) {
 
 export function useUnsubscribeAll(token: string) {
   return useManagedMutation<void>(token, () => api.alerts.unsubscribe(token))
+}
+
+// Ops console: no token, list/detail keyed by id instead of by capability token.
+
+const opsListKey = (params: OpsAlertsQueryParams) => ['ops', 'alerts', params] as const
+const opsDetailKey = (id: string) => ['ops', 'alerts', 'detail', id] as const
+
+export function useOpsAlerts(params: OpsAlertsQueryParams) {
+  return useQuery({
+    queryKey: opsListKey(params),
+    queryFn: () => api.opsAlerts.list(params),
+  })
+}
+
+export function useOpsAlert(id: string) {
+  return useQuery({
+    queryKey: opsDetailKey(id),
+    queryFn: () => api.opsAlerts.get(id),
+    enabled: id.length > 0,
+  })
+}
+
+function useOpsMutation<TVariables>(
+  id: string,
+  mutationFn: (variables: TVariables) => Promise<void>,
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: opsDetailKey(id) })
+      queryClient.invalidateQueries({ queryKey: ['ops', 'alerts'], exact: false })
+    },
+  })
+}
+
+export function useOpsUpdateAlert(id: string) {
+  return useOpsMutation<UpdateAlertRequest>(id, (patch) => api.opsAlerts.update(id, patch))
+}
+
+export function useOpsPauseAlert(id: string) {
+  return useOpsMutation<void>(id, () => api.opsAlerts.pause(id))
+}
+
+export function useOpsResumeAlert(id: string) {
+  return useOpsMutation<void>(id, () => api.opsAlerts.resume(id))
+}
+
+export function useOpsDeleteAlert(id: string) {
+  return useOpsMutation<void>(id, () => api.opsAlerts.remove(id))
 }

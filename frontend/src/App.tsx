@@ -1,6 +1,8 @@
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { OpsLayout } from '@/components/OpsLayout'
 import { PublicLayout } from '@/components/PublicLayout'
+import { AlertDetailPage } from '@/pages/ops/AlertDetailPage'
+import { AlertsPage } from '@/pages/ops/AlertsPage'
 import { BatchDetailPage } from '@/pages/ops/BatchDetailPage'
 import { CategoriesPage } from '@/pages/ops/CategoriesPage'
 import { DashboardPage } from '@/pages/ops/DashboardPage'
@@ -42,6 +44,8 @@ export default function App() {
           <Route path="categories" element={<CategoriesPage />} />
           <Route path="jobs" element={<JobsPage />} />
           <Route path="jobs/:id" element={<JobDetailPage />} />
+          <Route path="alerts" element={<AlertsPage />} />
+          <Route path="alerts/:id" element={<AlertDetailPage />} />
         </Route>
 
         {/* Legacy ops paths */}

@@ -119,3 +119,30 @@ public record AlertSubscriptionsResponse(
 	string MaskedAddress,
 	string SubscriberStatus,
 	IReadOnlyList<AlertSubscriptionDto> Subscriptions);
+
+/// <summary>
+/// The ops view of one subscription: carries the real address, unmasked, since ops needs it to
+/// act on a support request. Never returned from a subscriber-authenticated route.
+/// </summary>
+public record AlertOpsSubscriptionDto(
+	Guid Id,
+	string Name,
+	string Status,
+	string Cadence,
+	TimeOnly DigestSendLocalTime,
+	Guid SubscriberId,
+	string Channel,
+	string Address,
+	string SubscriberStatus,
+	DateTimeOffset CreatedAt,
+	DateTimeOffset MatchFromAt,
+	DateTimeOffset? LastAlertSentAt,
+	int AlertsSent,
+	AlertCriteriaDto Criteria);
+
+public record AlertOpsSubscriptionsPageDto(
+	IReadOnlyList<AlertOpsSubscriptionDto> Items,
+	int TotalCount,
+	int Page,
+	int PageSize,
+	int TotalPages);

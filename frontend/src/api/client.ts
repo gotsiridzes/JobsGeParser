@@ -17,6 +17,9 @@ import type {
   ConfirmAlertResponse,
   CreateAlertRequest,
   CreateAlertResponse,
+  OpsAlertSubscription,
+  OpsAlertSubscriptionsPage,
+  OpsAlertsQueryParams,
   UpdateAlertRequest,
 } from './alertTypes'
 
@@ -181,6 +184,36 @@ export const api = {
         method: 'POST',
         body: { token, subscriptionId: subscriptionId ?? null },
       }),
+  },
+
+  // Ops console: no capability token, trusted like every other /api/jobs/scrape/* route.
+  opsAlerts: {
+    list: (params: OpsAlertsQueryParams = {}) =>
+      fetchJson<OpsAlertSubscriptionsPage>(
+        `/api/alerts/ops/subscriptions${buildQuery({
+          status: params.status,
+          cadence: params.cadence,
+          channel: params.channel,
+          q: params.q,
+          page: params.page,
+          pageSize: params.pageSize,
+        })}`,
+      ),
+
+    get: (id: string) =>
+      fetchJson<OpsAlertSubscription>(`/api/alerts/ops/subscriptions/${id}`),
+
+    update: (id: string, patch: UpdateAlertRequest) =>
+      requestJson<void>(`/api/alerts/ops/subscriptions/${id}`, { method: 'PATCH', body: patch }),
+
+    pause: (id: string) =>
+      requestJson<void>(`/api/alerts/ops/subscriptions/${id}/pause`, { method: 'POST' }),
+
+    resume: (id: string) =>
+      requestJson<void>(`/api/alerts/ops/subscriptions/${id}/resume`, { method: 'POST' }),
+
+    remove: (id: string) =>
+      requestJson<void>(`/api/alerts/ops/subscriptions/${id}`, { method: 'DELETE' }),
   },
 }
 

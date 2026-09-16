@@ -1,5 +1,5 @@
 import { Link, NavLink, Outlet } from 'react-router-dom'
-import { Activity, ArrowLeft, Briefcase, FolderTree, History, LayoutDashboard } from 'lucide-react'
+import { Activity, ArrowLeft, BellRing, Briefcase, FolderTree, History, LayoutDashboard } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
@@ -7,6 +7,7 @@ const navItems = [
   { to: '/ops/runs', label: 'Run History', icon: History },
   { to: '/ops/categories', label: 'Categories', icon: FolderTree },
   { to: '/ops/jobs', label: 'Jobs', icon: Briefcase },
+  { to: '/ops/alerts', label: 'Alerts', icon: BellRing },
 ]
 
 export function OpsLayout() {

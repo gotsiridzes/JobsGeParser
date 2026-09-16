@@ -87,3 +87,38 @@ export interface UpdateAlertRequest {
   digestSendLocalTime?: string
   criteria?: AlertCriteria
 }
+
+/** Ops view of one subscription - carries the real address, no masking. */
+export interface OpsAlertSubscription {
+  id: string
+  name: string
+  status: AlertSubscriptionStatus | string
+  cadence: AlertCadence
+  digestSendLocalTime: string
+  subscriberId: string
+  channel: AlertChannel
+  address: string
+  subscriberStatus: AlertSubscriberStatus | string
+  createdAt: string
+  matchFromAt: string
+  lastAlertSentAt: string | null
+  alertsSent: number
+  criteria: AlertCriteria
+}
+
+export interface OpsAlertSubscriptionsPage {
+  items: OpsAlertSubscription[]
+  totalCount: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
+export interface OpsAlertsQueryParams {
+  status?: string
+  cadence?: AlertCadence
+  channel?: AlertChannel
+  q?: string
+  page?: number
+  pageSize?: number
+}
