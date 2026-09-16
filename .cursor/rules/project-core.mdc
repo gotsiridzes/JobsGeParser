@@ -17,6 +17,8 @@ alwaysApply: true
 - Upsert by jobs.ge Id; link jobs to categories via job_categories many-to-many
 - Respect DetailPageDelayMs between detail-page requests
 - DbContext and Repo are scoped; use IServiceScopeFactory in hosted services
+- Alerts are driven by `job_events` outbox rows written inside the same SaveChanges as the job upsert (`Repo.UpsertDescriptionAsync`); never trigger alert work from the scrape path directly, and never emit events from the enrichment backfill
+- Alert dedup is the unique index on `alert_deliveries (SubscriptionId, JobId)`, not application logic; do not work around it
 - Frontend dashboard lives in `frontend/`: separate npm project, not in the .sln
 - Do not add backup .csproj files or unrelated CI workflows
 

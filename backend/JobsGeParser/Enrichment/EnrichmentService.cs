@@ -104,6 +104,23 @@ public sealed class EnrichmentService
 		("telavi", "Telavi"),
 	];
 
+	/// <summary>
+	/// The values the extractor can actually produce, derived from the keyword tables above so a
+	/// new keyword never drifts from what an alert filter is allowed to ask for.
+	/// </summary>
+	public static readonly IReadOnlySet<string> WorkModeValues = ToValueSet(WorkModeKeywords);
+
+	public static readonly IReadOnlySet<string> EmploymentTypeValues = ToValueSet(EmploymentTypeKeywords);
+
+	public static readonly IReadOnlySet<string> SeniorityValues = ToValueSet(SeniorityKeywords);
+
+	public static readonly IReadOnlySet<string> LanguageValues = ToValueSet(LanguageKeywords);
+
+	public static readonly IReadOnlySet<string> CityValues = ToValueSet(CityKeywords);
+
+	private static IReadOnlySet<string> ToValueSet((string Keyword, string Value)[] keywords) =>
+		keywords.Select(k => k.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
 	// Currency symbol/code, optional amount with separators, optional range, optional period hint nearby
 	private static readonly System.Text.RegularExpressions.Regex SalaryRegex = new(
 		"""

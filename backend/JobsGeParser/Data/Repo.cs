@@ -12,10 +12,12 @@ namespace JobsGeParser.Data;
 public class Repo(
 	JobsDbContext db,
 	IOptions<JobsGeParserOptions> options,
+	IOptions<AlertOptions> alertOptions,
 	EnrichmentService enrichment)
 {
 	private readonly JobsDbContext _db = db;
 	private readonly JobsGeParserOptions _options = options.Value;
+	private readonly AlertOptions _alertOptions = alertOptions.Value;
 	private readonly EnrichmentService _enrichment = enrichment;
 	private const double TrigramSimilarityThreshold = 0.3;
 
@@ -51,7 +53,8 @@ public class Repo(
 	public async Task LinkJobToCategoryAsync(int jobId, string categorySlug, CancellationToken ct = default)
 	{
 		var now = DateTimeOffset.UtcNow;
-		LinkJobToCategory(jobId, categorySlug, now);
+		var existing = await _db.Jobs.FindAsync([jobId], ct);
+		LinkJobToCategory(jobId, categorySlug, now, existing);
 		await _db.SaveChangesAsync(ct);
 	}
 
@@ -106,7 +109,7 @@ public class Repo(
 			needsDetailFetch = true;
 		}
 
-		LinkJobToCategory(existing?.Id ?? job.Id, categorySlug, now);
+		LinkJobToCategory(existing?.Id ?? job.Id, categorySlug, now, existing);
 		await _db.SaveChangesAsync(ct);
 		return new MetadataUpsertResult(result, needsDetailFetch);
 	}
@@ -124,6 +127,10 @@ public class Repo(
 		var changed = existing.Description != description
 			|| existing.DescriptionHtml != descriptionHtml;
 
+		// Captured before the stamp below, because this is what tells a first completion apart
+		// from a re-fetch of a job that was already complete.
+		var wasIncomplete = existing.DetailsFetchedAt is null;
+
 		if (changed)
 		{
 			existing.Description = description;
@@ -134,6 +141,15 @@ public class Repo(
 		existing.DetailsFetchedAt = now;
 		existing.LastSeenAt = now;
 		ApplyEnrichment(existing, now);
+
+		// Enrichment has just run, so this is the first instant at which the row is coherent
+		// enough to match an alert filter. The event goes out in the same SaveChanges as the
+		// job itself, which is the whole outbox guarantee.
+		if (wasIncomplete)
+			AddJobEvent(jobId, JobEventType.JobReady, null, now);
+		else if (changed)
+			AddJobEvent(jobId, JobEventType.JobReEnriched, null, now);
+
 		await _db.SaveChangesAsync(ct);
 	}
 
@@ -209,7 +225,7 @@ public class Repo(
 			result = JobUpsertResult.Updated;
 		}
 
-		LinkJobToCategory(job.Id, categorySlug, now);
+		LinkJobToCategory(job.Id, categorySlug, now, existing);
 		await _db.SaveChangesAsync(ct);
 		return result;
 	}
@@ -231,24 +247,7 @@ public class Repo(
 			.OrderByDescending(j => j.LastSeenAt)
 			.Skip((page - 1) * pageSize)
 			.Take(pageSize)
-			.Select(j => new JobListItemDto(
-				j.Id,
-				j.Name,
-				j.Link,
-				j.Company,
-				j.CompanyLink,
-				j.Published,
-				j.EndDate,
-				j.LastSeenAt,
-				j.SalaryMin,
-				j.SalaryMax,
-				j.SalaryCurrency,
-				j.SalaryPeriod,
-				j.City,
-				j.WorkMode,
-				j.EmploymentType,
-				j.Seniority,
-				j.LanguageRequirement))
+			.Select(JobProjections.ToListItem)
 			.ToListAsync(ct);
 
 		var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
@@ -753,7 +752,7 @@ public class Repo(
 		existing.EndDate = job.EndDate;
 	}
 
-	private void LinkJobToCategory(int jobId, string categorySlug, DateTimeOffset now)
+	private void LinkJobToCategory(int jobId, string categorySlug, DateTimeOffset now, JobEntity? existingJob)
 	{
 		var link = _db.JobCategories.Find([jobId, categorySlug]);
 		if (link is null)
@@ -765,11 +764,35 @@ public class Repo(
 				FirstSeenAt = now,
 				LastSeenAt = now
 			});
+
+			// A job already complete before this link is one a parallel category pass enriched
+			// earlier. Without this event a category filtered alert would never see it.
+			if (existingJob?.DetailsFetchedAt is not null)
+				AddJobEvent(jobId, JobEventType.JobCategoryLinked, categorySlug, now);
 		}
 		else
 		{
 			link.LastSeenAt = now;
 		}
+	}
+
+	/// <summary>
+	/// Queues an outbox row for the alert pipeline. Never called from the enrichment backfill:
+	/// bumping the extractor version would otherwise alert everyone about the whole corpus.
+	/// </summary>
+	private void AddJobEvent(int jobId, string eventType, string? categorySlug, DateTimeOffset now)
+	{
+		if (!_alertOptions.Enabled)
+			return;
+
+		_db.JobEvents.Add(new JobEventEntity
+		{
+			JobId = jobId,
+			EventType = eventType,
+			CategorySlug = categorySlug,
+			OccurredAt = now,
+			AvailableAt = now.AddSeconds(_alertOptions.EventSettleDelaySeconds)
+		});
 	}
 
 	private static bool IsUniqueViolation(DbUpdateException ex) =>

@@ -21,6 +21,7 @@ var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Job
 var ops = app.Services.GetRequiredService<IOptions<JobsGeParserOptions>>().Value;
 var databaseOptions = app.Services.GetRequiredService<IOptions<DatabaseOptions>>().Value;
 var corsOptions = app.Services.GetRequiredService<IOptions<CorsOptions>>().Value;
+var alertOptions = app.Services.GetRequiredService<IOptions<AlertOptions>>().Value;
 
 logger.LogInformation("Starting JobsGeParser");
 
@@ -42,13 +43,22 @@ using (var scope = app.Services.CreateScope())
 if (corsOptions.AllowedOrigins.Length > 0)
 	app.UseCors("Frontend");
 
+app.UseRateLimiter();
+
 app.RegisterJobsEndpoints();
 app.RegisterSearchEndpoints();
 app.RegisterScrapeEndpoints();
 
+if (alertOptions.Enabled)
+{
+	app.RegisterAlertEndpoints();
+	app.RegisterAlertLandingEndpoints();
+}
+
 logger.LogInformation(
-	"JobsGeParser ready: scrape {ScrapeState}, interval {IntervalMinutes} min, {EnabledCategories} enabled categories",
+	"JobsGeParser ready: scrape {ScrapeState}, alerts {AlertState}, interval {IntervalMinutes} min, {EnabledCategories} enabled categories",
 	ops.ScrapeEnabled ? "enabled" : "disabled",
+	alertOptions.Enabled ? "enabled" : "disabled",
 	ops.ScrapeIntervalMinutes,
 	ops.EnabledCategories.Count());
 
