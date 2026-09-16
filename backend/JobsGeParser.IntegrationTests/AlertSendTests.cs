@@ -186,6 +186,65 @@ public class AlertSendTests(AlertsFixture fixture)
 	}
 
 	[Fact]
+	public async Task ConfirmationEmail_IsSentToAnUnconfirmedAddress()
+	{
+		await fixture.ResetAsync();
+
+		// Regression: the pre-send check used to require Confirmed for every message, which
+		// cancelled every confirmation, since those always go to someone not yet confirmed.
+		await using var scope = fixture.CreateScope();
+		var service = scope.ServiceProvider.GetRequiredService<AlertSubscriptionService>();
+		var result = await service.SubscribeAsync(
+			Data.AlertChannelKind.Email,
+			"new.person@example.com",
+			"Backend",
+			AlertCadence.Instant,
+			new TimeOnly(9, 0),
+			"Asia/Tbilisi",
+			new AlertCriteria(TitleContains: "backend"));
+
+		Assert.Equal(AlertSubscribeOutcome.Accepted, result.Outcome);
+
+		await PumpAsync();
+
+		var sent = Assert.Single(fixture.Email.Sent);
+		Assert.Equal("new.person@example.com", sent.Address);
+		Assert.Contains("/a/c/", sent.BodyText, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task ResubmittingAnUnconfirmedAlert_SendsANewConfirmation()
+	{
+		await fixture.ResetAsync();
+
+		async Task SubscribeAsync()
+		{
+			await using var scope = fixture.CreateScope();
+			var service = scope.ServiceProvider.GetRequiredService<AlertSubscriptionService>();
+			await service.SubscribeAsync(
+				Data.AlertChannelKind.Email,
+				"retry@example.com",
+				"Backend",
+				AlertCadence.Instant,
+				new TimeOnly(9, 0),
+				"Asia/Tbilisi",
+				new AlertCriteria(TitleContains: "backend"));
+		}
+
+		await SubscribeAsync();
+
+		// Past the 60 second resend gap.
+		fixture.Clock.Advance(TimeSpan.FromMinutes(2));
+		await SubscribeAsync();
+
+		await using var verify = fixture.CreateScope();
+		var db = verify.ServiceProvider.GetRequiredService<JobsDbContext>();
+
+		Assert.Equal(2, await db.AlertMessages.CountAsync(m => m.Kind == AlertMessageKind.Confirmation));
+		Assert.Equal(1, await db.AlertSubscriptions.CountAsync());
+	}
+
+	[Fact]
 	public async Task SentMessage_CarriesTheRenderedBodyAndAnUnsubscribeLink()
 	{
 		await fixture.ResetAsync();

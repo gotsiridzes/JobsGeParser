@@ -45,6 +45,8 @@ Two constraints carry most of the correctness:
 - **`alert_deliveries (SubscriptionId, JobId)` unique** is the entire no-duplicate-alerts guarantee. Enforced by Postgres, so no crash, race, replay or double drain can send the same job twice.
 - **`alert_messages (IdempotencyKey)` unique**, together with `alert_subscriptions.LastDigestSentOn` (a local calendar date), makes a double digest impossible including across a DST transition.
 
+**A person never gets the same job twice.** The unique index covers one alert. Across a person's alerts, the drainer sends one instant message per person per job (keyed `instant:{subscriberId}:{jobId}`), and the digest builder leaves out any job already queued or sent to that person through another alert. Those rows are closed as `Skipped` with reason `AlreadySent`. Deleted alerts still count, and a message that failed or was cancelled releases its jobs. The send pump copies each message's outcome onto its delivery rows (`Sent`, `Failed`, `Cancelled`), which is what this check and the "alerts sent" counter read.
+
 Criteria use typed columns and native `text[]`, not JSONB: the field set is small and closed, it mirrors the `jobs` enrichment columns one for one, and the reverse match prefilter needs an indexed answer to "which subscriptions accept city X", which is a GIN containment lookup.
 
 ## Which event triggers matching

@@ -208,7 +208,9 @@ public class AlertRepo(
 			return [];
 
 		var messages = await _db.AlertMessages
-			.Include(m => m.Subscriber)
+			// Subscriptions are needed so a suppression can pause them in the same save.
+			.Include(m => m.Subscriber!)
+				.ThenInclude(s => s.Subscriptions)
 			.Where(m => ids.Contains(m.Id))
 			.ToListAsync(ct);
 
@@ -306,11 +308,80 @@ public class AlertRepo(
 	/// Cancels everything still queued for a subscriber, used when they unsubscribe or are
 	/// suppressed. Anything already handed to the provider is beyond recall.
 	/// </summary>
-	public Task<int> CancelQueuedMessagesAsync(Guid subscriberId, CancellationToken ct = default) =>
-		_db.AlertMessages
+	public async Task<int> CancelQueuedMessagesAsync(Guid subscriberId, CancellationToken ct = default)
+	{
+		var queued = _db.AlertMessages
 			.Where(m => m.SubscriberId == subscriberId
-				&& (m.Status == AlertMessageStatus.Pending || m.Status == AlertMessageStatus.Claimed))
-			.ExecuteUpdateAsync(s => s.SetProperty(m => m.Status, AlertMessageStatus.Cancelled), ct);
+				&& (m.Status == AlertMessageStatus.Pending || m.Status == AlertMessageStatus.Claimed));
+
+		// Release the jobs those messages carried, so they do not count as already sent.
+		await _db.AlertDeliveries
+			.Where(d => d.MessageId != null && queued.Select(m => m.Id).Contains(d.MessageId.Value))
+			.ExecuteUpdateAsync(s => s.SetProperty(d => d.Status, AlertDeliveryStatus.Cancelled), ct);
+
+		return await queued.ExecuteUpdateAsync(
+			s => s.SetProperty(m => m.Status, AlertMessageStatus.Cancelled),
+			ct);
+	}
+
+	// Per-person dedup
+
+	/// <summary>
+	/// Jobs from <paramref name="jobIds"/> that this person has already been sent, or that are
+	/// queued to them, through any of their alerts, including deleted ones. A job counts once it
+	/// is attached to a message that has not failed or been cancelled, so overlapping alerts and
+	/// a later switch from instant to digest can never mail the same job to the same person twice.
+	/// </summary>
+	public async Task<IReadOnlySet<int>> GetJobsAlreadySentAsync(
+		Guid subscriberId,
+		IReadOnlyCollection<int> jobIds,
+		CancellationToken ct = default)
+	{
+		if (jobIds.Count == 0)
+			return new HashSet<int>();
+
+		var ids = jobIds.ToArray();
+
+		var sent = await _db.AlertDeliveries
+			.AsNoTracking()
+			.Where(d => ids.Contains(d.JobId)
+				&& d.MessageId != null
+				&& (d.Status == AlertDeliveryStatus.Queued || d.Status == AlertDeliveryStatus.Sent)
+				&& d.Subscription!.SubscriberId == subscriberId)
+			.Select(d => d.JobId)
+			.Distinct()
+			.ToListAsync(ct);
+
+		return sent.ToHashSet();
+	}
+
+	/// <summary>
+	/// Tracked delivery rows for one job, so the caller can attach them to a message in the same
+	/// SaveChanges that inserts the message.
+	/// </summary>
+	public async Task<IReadOnlyList<AlertDeliveryEntity>> GetDeliveriesForJobAsync(
+		int jobId,
+		IReadOnlyCollection<Guid> subscriptionIds,
+		CancellationToken ct = default)
+	{
+		var ids = subscriptionIds.ToArray();
+
+		return await _db.AlertDeliveries
+			.Where(d => d.JobId == jobId && ids.Contains(d.SubscriptionId))
+			.ToListAsync(ct);
+	}
+
+	/// <summary>
+	/// Mirrors a message's final outcome onto the deliveries it carried. Sent deliveries are what
+	/// the per-person dedup and the "alerts sent" counter read.
+	/// </summary>
+	public Task<int> SetDeliveryStatusForMessageAsync(
+		Guid messageId,
+		string status,
+		CancellationToken ct = default) =>
+		_db.AlertDeliveries
+			.Where(d => d.MessageId == messageId && d.Status == AlertDeliveryStatus.Queued)
+			.ExecuteUpdateAsync(s => s.SetProperty(d => d.Status, status), ct);
 
 	// Outbox and matching
 

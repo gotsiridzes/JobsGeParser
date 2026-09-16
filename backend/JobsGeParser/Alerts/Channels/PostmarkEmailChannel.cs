@@ -57,7 +57,7 @@ public sealed class PostmarkEmailChannel(
 			HtmlBody = message.BodyHtml,
 			// Postmark dedupes on its side too, which turns a retry of an already delivered
 			// message into a no-op rather than a second email.
-			MessageStream = "outbound",
+			MessageStream = _options.MessageStream,
 			Headers = BuildHeaders(message)
 		};
 

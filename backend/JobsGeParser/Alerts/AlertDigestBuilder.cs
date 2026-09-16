@@ -109,15 +109,45 @@ public sealed class AlertDigestBuilder(
 		DateOnly localDate,
 		CancellationToken ct)
 	{
-		var pending = await repo.GetPendingDeliveriesAsync(subscription.Id, ct);
-		if (pending.Count == 0)
+		var waiting = await repo.GetPendingDeliveriesAsync(subscription.Id, ct);
+		if (waiting.Count == 0)
 			return false;
+
+		var now = timeProvider.GetUtcNow();
+
+		// A job this person already got through another alert, instant or digest, is closed out
+		// here instead of being mailed a second time.
+		var alreadySent = await repo.GetJobsAlreadySentAsync(
+			subscriber.Id,
+			[.. waiting.Select(p => p.Job.Id)],
+			ct);
+
+		var pending = new List<(AlertDeliveryEntity Delivery, JobEntity Job)>(waiting.Count);
+		foreach (var item in waiting)
+		{
+			if (alreadySent.Contains(item.Job.Id))
+			{
+				item.Delivery.Status = AlertDeliveryStatus.Skipped;
+				item.Delivery.SkipReason = AlertDeliverySkipReason.AlreadySent;
+			}
+			else
+			{
+				pending.Add(item);
+			}
+		}
+
+		if (pending.Count == 0)
+		{
+			// Nothing new to say today. Do not stamp the date, so a match arriving later today
+			// can still go out in today's digest.
+			await repo.SaveChangesAsync(ct);
+			return false;
+		}
 
 		var cap = subscriber.Channel == AlertChannelKind.Sms
 			? _options.Sms.MaxDigestItems
 			: _options.Email.MaxDigestItems;
 
-		var now = timeProvider.GetUtcNow();
 		var manageToken = AlertTokens.DeriveManageToken(subscriber.Id, _options.TokenSecret);
 
 		var rendered = renderers.Get(subscriber.Channel).RenderDigest(new AlertDigestModel(

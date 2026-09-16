@@ -93,7 +93,17 @@ public sealed class AlertSubscriptionService(
 		var hash = canonical.ComputeHash();
 		var duplicate = await repo.FindDuplicateSubscriptionAsync(subscriber.Id, hash, ct);
 		if (duplicate is not null)
+		{
+			// Someone resubmitting the same alert usually never got, or lost, the confirmation.
+			// Send a fresh one, still subject to the per-address limits.
+			if (subscriber.Status == AlertSubscriberStatus.Pending && CanSendConfirmation(subscriber, now))
+			{
+				EnqueueConfirmation(subscriber, duplicate.Name, matching, now);
+				await repo.SaveChangesAsync(ct);
+			}
+
 			return new AlertSubscribeResult(AlertSubscribeOutcome.Accepted, matching);
+		}
 
 		var alreadyProven = subscriber.Status == AlertSubscriberStatus.Confirmed;
 

@@ -16,6 +16,12 @@ public class AlertEmailOptions
 
 	public string ApiKey { get; set; } = "";
 
+	/// <summary>
+	/// Postmark message stream. "outbound" is the default transactional stream; use a broadcast
+	/// stream id here if Postmark asks for digests to be sent as broadcast mail.
+	/// </summary>
+	public string MessageStream { get; set; } = "outbound";
+
 	public int MaxConcurrency { get; set; } = 4;
 
 	public int MinIntervalMs { get; set; } = 100;

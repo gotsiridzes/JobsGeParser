@@ -112,16 +112,7 @@ public sealed class AlertOutboxDrainer(
 			.ToList();
 
 		if (instant.Count > 0)
-		{
-			// One lookup for the whole batch rather than one per matched subscription.
-			var subscribers = await repo.GetSubscribersAsync([.. instant.Select(s => s.SubscriberId)], ct);
-
-			foreach (var subscription in instant)
-			{
-				if (subscribers.TryGetValue(subscription.SubscriberId, out var subscriber))
-					EnqueueInstant(repo, subscription, subscriber, job, now);
-			}
-		}
+			await EnqueueInstantAsync(repo, instant, job, now, ct);
 
 		logger.LogInformation(
 			"Job {JobId} matched {MatchCount} subscription(s)",
@@ -129,16 +120,77 @@ public sealed class AlertOutboxDrainer(
 			newlyMatched.Count);
 	}
 
-	private void EnqueueInstant(
+	/// <summary>
+	/// Sends each person at most one message for this job, however many of their alerts matched
+	/// it, and never one they already received through another alert. The first matching alert
+	/// carries the message; the rest are closed out as already sent.
+	/// </summary>
+	private async Task EnqueueInstantAsync(
 		AlertRepo repo,
+		IReadOnlyList<AlertSubscriptionEntity> instant,
+		JobSnapshot job,
+		DateTimeOffset now,
+		CancellationToken ct)
+	{
+		// One lookup for the whole batch rather than one per matched subscription.
+		var subscribers = await repo.GetSubscribersAsync([.. instant.Select(s => s.SubscriberId).Distinct()], ct);
+		var deliveries = (await repo.GetDeliveriesForJobAsync(job.Id, [.. instant.Select(s => s.Id)], ct))
+			.ToDictionary(d => d.SubscriptionId);
+
+		foreach (var group in instant.GroupBy(s => s.SubscriberId))
+		{
+			var alerts = group.OrderBy(s => s.CreatedAt).ToList();
+
+			if (!subscribers.TryGetValue(group.Key, out var subscriber)
+				|| subscriber.Status != AlertSubscriberStatus.Confirmed)
+			{
+				continue;
+			}
+
+			// A message that failed or was cancelled earlier still owns the idempotency key, so it
+			// also counts: re-adding it would violate the unique index and fail the whole batch.
+			var alreadySent = await repo.GetJobsAlreadySentAsync(subscriber.Id, [job.Id], ct);
+			if (alreadySent.Contains(job.Id)
+				|| await repo.MessageExistsAsync(InstantKey(subscriber.Id, job.Id), ct))
+			{
+				foreach (var alert in alerts)
+					SkipAsAlreadySent(deliveries, alert.Id);
+
+				continue;
+			}
+
+			var carrier = alerts[0];
+			var message = BuildInstantMessage(carrier, subscriber, job, now);
+			repo.AddMessage(message);
+
+			if (deliveries.TryGetValue(carrier.Id, out var carried))
+			{
+				carried.Message = message;
+				carried.Status = AlertDeliveryStatus.Queued;
+			}
+
+			foreach (var other in alerts.Skip(1))
+				SkipAsAlreadySent(deliveries, other.Id);
+		}
+	}
+
+	private static void SkipAsAlreadySent(
+		IReadOnlyDictionary<Guid, AlertDeliveryEntity> deliveries,
+		Guid subscriptionId)
+	{
+		if (!deliveries.TryGetValue(subscriptionId, out var delivery))
+			return;
+
+		delivery.Status = AlertDeliveryStatus.Skipped;
+		delivery.SkipReason = AlertDeliverySkipReason.AlreadySent;
+	}
+
+	private AlertMessageEntity BuildInstantMessage(
 		AlertSubscriptionEntity subscription,
 		AlertSubscriberEntity subscriber,
 		JobSnapshot job,
 		DateTimeOffset now)
 	{
-		if (subscriber.Status != AlertSubscriberStatus.Confirmed)
-			return;
-
 		var manageToken = AlertTokens.DeriveManageToken(subscriber.Id, _options.TokenSecret);
 
 		var rendered = renderers.Get(subscriber.Channel).RenderInstantMatch(new AlertMatchModel(
@@ -147,7 +199,7 @@ public sealed class AlertOutboxDrainer(
 			links.Manage(manageToken),
 			links.Unsubscribe(manageToken)));
 
-		repo.AddMessage(new AlertMessageEntity
+		return new AlertMessageEntity
 		{
 			Id = Guid.CreateVersion7(),
 			SubscriberId = subscriber.Id,
@@ -155,16 +207,19 @@ public sealed class AlertOutboxDrainer(
 			Kind = AlertMessageKind.InstantMatch,
 			Channel = subscriber.Channel,
 			Address = subscriber.Address,
-			// One message per subscription and job, matching the ledger's own uniqueness.
-			IdempotencyKey = $"instant:{subscription.Id}:{job.Id}",
+			// Keyed per person and job, so the unique index is a database backstop for the
+			// never-twice rule even if the checks above were ever bypassed.
+			IdempotencyKey = InstantKey(subscriber.Id, job.Id),
 			Status = AlertMessageStatus.Pending,
 			Subject = rendered.Subject,
 			BodyText = rendered.BodyText,
 			BodyHtml = rendered.BodyHtml,
 			AvailableAt = now,
 			CreatedAt = now
-		});
+		};
 	}
+
+	private static string InstantKey(Guid subscriberId, int jobId) => $"instant:{subscriberId}:{jobId}";
 
 	private void MarkProcessed(IReadOnlyList<JobEventEntity> events, DateTimeOffset now)
 	{

@@ -48,6 +48,24 @@ public sealed class AlertSendPump(
 		}
 
 		await repo.SaveChangesAsync(ct);
+
+		// Mirror final outcomes onto the jobs each message carried. "Sent" is what stops the same
+		// job reaching the same person again through another alert; a failed or cancelled message
+		// releases its jobs.
+		foreach (var message in claimed)
+		{
+			var deliveryStatus = message.Status switch
+			{
+				AlertMessageStatus.Sent => AlertDeliveryStatus.Sent,
+				AlertMessageStatus.DeadLettered => AlertDeliveryStatus.Failed,
+				AlertMessageStatus.Cancelled => AlertDeliveryStatus.Cancelled,
+				_ => null
+			};
+
+			if (deliveryStatus is not null)
+				await repo.SetDeliveryStatusForMessageAsync(message.Id, deliveryStatus, CancellationToken.None);
+		}
+
 		return attempted;
 	}
 
@@ -67,8 +85,9 @@ public sealed class AlertSendPump(
 		}
 
 		// Re-checked immediately before the provider call: the subscriber may have unsubscribed
-		// between enqueue and now.
-		if (message.Subscriber is { } subscriber && subscriber.Status != AlertSubscriberStatus.Confirmed)
+		// between enqueue and now. A confirmation is the one message that goes to someone who has
+		// not confirmed yet, so it is checked against Pending instead.
+		if (message.Subscriber is { } subscriber && subscriber.Status != RequiredSubscriberStatus(message))
 		{
 			message.Status = AlertMessageStatus.Cancelled;
 			message.LastError = $"Subscriber status is {subscriber.Status}.";
@@ -210,6 +229,11 @@ public sealed class AlertSendPump(
 		// keeps its own outcome, which the caller writes straight after this.
 		await repo.CancelQueuedMessagesAsync(subscriber.Id, ct);
 	}
+
+	private static string RequiredSubscriberStatus(AlertMessageEntity message) =>
+		message.Kind == AlertMessageKind.Confirmation
+			? AlertSubscriberStatus.Pending
+			: AlertSubscriberStatus.Confirmed;
 
 	private OutboundAlertMessage ToOutbound(AlertMessageEntity message)
 	{

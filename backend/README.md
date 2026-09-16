@@ -245,6 +245,8 @@ A job seeker saves a filter against a verified email or phone number and is noti
 
 **Two constraints carry the correctness.** `alert_deliveries (SubscriptionId, JobId)` unique is the whole no-duplicate-alerts guarantee, enforced by Postgres rather than by application code. `alert_messages (IdempotencyKey)` unique plus `alert_subscriptions.LastDigestSentOn` (a local calendar date) makes a double digest impossible, including across a DST transition.
 
+**A person never gets the same job twice.** The unique index covers one alert. Across a person's alerts, the drainer sends one instant message per person per job (keyed `instant:{subscriberId}:{jobId}`), and the digest builder leaves out any job already queued or sent to that person through another alert. Those rows are closed as `Skipped` with reason `AlreadySent`. Deleted alerts still count, and a message that failed or was cancelled releases its jobs. The send pump copies each message's outcome onto its delivery rows (`Sent`, `Failed`, `Cancelled`), which is what this check and the "alerts sent" counter read.
+
 **Identity is a verified contact, not an account.** A subscriber is a (channel, address) pair with double opt-in. Manage and unsubscribe tokens are derived by HMAC from the subscriber id and `Alerts:TokenSecret`, so message footers can rebuild the link at send time while the database holds only a hash.
 
 #### Adding a channel
