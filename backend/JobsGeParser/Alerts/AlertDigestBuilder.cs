@@ -152,7 +152,7 @@ public sealed class AlertDigestBuilder(
 
 		var rendered = renderers.Get(subscriber.Channel).RenderDigest(new AlertDigestModel(
 			subscription.Name,
-			[.. pending.Take(cap).Select(p => ToJobModel(p.Job))],
+			[.. pending.Take(cap).Select(p => AlertJobModel.FromEntity(p.Job))],
 			pending.Count,
 			links.Manage(manageToken),
 			links.Unsubscribe(manageToken)));
@@ -210,15 +210,4 @@ public sealed class AlertDigestBuilder(
 		return true;
 	}
 
-	private static AlertJobModel ToJobModel(JobEntity job) => new(
-		job.Id,
-		job.Name,
-		job.Company,
-		job.Link,
-		job.City,
-		job.WorkMode,
-		job.Seniority,
-		job.SalaryMin,
-		job.SalaryMax,
-		job.SalaryCurrency);
 }

@@ -195,7 +195,7 @@ public sealed class AlertOutboxDrainer(
 
 		var rendered = renderers.Get(subscriber.Channel).RenderInstantMatch(new AlertMatchModel(
 			subscription.Name,
-			ToJobModel(job),
+			AlertJobModel.FromSnapshot(job),
 			links.Manage(manageToken),
 			links.Unsubscribe(manageToken)));
 
@@ -240,15 +240,4 @@ public sealed class AlertOutboxDrainer(
 		}
 	}
 
-	private static AlertJobModel ToJobModel(JobSnapshot job) => new(
-		job.Id,
-		job.Name,
-		job.Company,
-		job.Link,
-		job.City,
-		job.WorkMode,
-		job.Seniority,
-		job.SalaryMin,
-		job.SalaryMax,
-		job.SalaryCurrency);
 }

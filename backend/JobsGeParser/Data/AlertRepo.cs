@@ -59,6 +59,30 @@ public class AlertRepo(
 	public Task<int> CountMatchingAsync(AlertCriteria criteria, CancellationToken ct = default) =>
 		AlertCriteriaQueryBuilder.Apply(_db.Jobs.AsNoTracking(), criteria).CountAsync(ct);
 
+	/// <summary>
+	/// The newest jobs a filter matches right now, for the one-time welcome batch sent at
+	/// confirmation. Same forward query as <see cref="PreviewAsync"/>, but returns entities
+	/// directly since the caller needs job ids to record deliveries, not a DTO page.
+	/// </summary>
+	public async Task<(IReadOnlyList<JobEntity> Jobs, int TotalCount)> GetWelcomeBatchAsync(
+		AlertCriteria criteria,
+		int limit,
+		CancellationToken ct = default)
+	{
+		var matched = AlertCriteriaQueryBuilder.Apply(_db.Jobs.AsNoTracking(), criteria);
+
+		var totalCount = await matched.CountAsync(ct);
+		if (totalCount == 0)
+			return ([], 0);
+
+		var jobs = await matched
+			.OrderByDescending(j => j.LastSeenAt)
+			.Take(limit)
+			.ToListAsync(ct);
+
+		return (jobs, totalCount);
+	}
+
 	public async Task<IReadOnlySet<string>> GetKnownCategorySlugsAsync(CancellationToken ct = default)
 	{
 		var slugs = await _db.Categories
@@ -132,6 +156,14 @@ public class AlertRepo(
 		_db.AlertSubscriptions.Add(subscription);
 		return subscription;
 	}
+
+	/// <summary>
+	/// Records one job as delivered (or about to be) via a specific message. Used for the welcome
+	/// batch, a single low-volume insert unlike the bulk reverse-match path in
+	/// <see cref="InsertDeliveriesAsync"/>, so a plain entity add is simpler than the raw SQL
+	/// upsert that path needs to survive concurrent drains.
+	/// </summary>
+	public void AddDelivery(AlertDeliveryEntity delivery) => _db.AlertDeliveries.Add(delivery);
 
 	public Task<AlertSubscriptionEntity?> FindSubscriptionAsync(
 		Guid subscriberId,

@@ -107,7 +107,7 @@ public sealed class AlertSubscriptionService(
 
 		var alreadyProven = subscriber.Status == AlertSubscriberStatus.Confirmed;
 
-		repo.AddSubscription(new AlertSubscriptionEntity
+		var subscription = new AlertSubscriptionEntity
 		{
 			Id = Guid.CreateVersion7(),
 			SubscriberId = subscriber.Id,
@@ -133,10 +133,21 @@ public sealed class AlertSubscriptionService(
 			SalaryMax = canonical.SalaryMax,
 			SalaryCurrency = canonical.SalaryCurrency,
 			RequireSalary = canonical.RequireSalary
-		});
+		};
+
+		repo.AddSubscription(subscription);
 
 		if (!alreadyProven && CanSendConfirmation(subscriber, now))
+		{
 			EnqueueConfirmation(subscriber, name.Trim(), matching, now);
+		}
+		else if (alreadyProven && _options.WelcomeBatchEnabled)
+		{
+			// Already-proven addresses skip the confirmation step entirely (a second alert on the
+			// same address goes straight to Active), so this is the only place their welcome batch
+			// can be triggered.
+			await EnqueueWelcomeBatchAsync(subscriber, subscription, now, ct);
+		}
 
 		await repo.SaveChangesAsync(ct);
 
@@ -173,6 +184,9 @@ public sealed class AlertSubscriptionService(
 			subscription.MatchFromAt = now;
 			subscription.UpdatedAt = now;
 			activated++;
+
+			if (_options.WelcomeBatchEnabled)
+				await EnqueueWelcomeBatchAsync(subscriber, subscription, now, ct);
 		}
 
 		await repo.SaveChangesAsync(ct);
@@ -313,6 +327,80 @@ public sealed class AlertSubscriptionService(
 			AvailableAt = now,
 			CreatedAt = now
 		});
+	}
+
+	/// <summary>
+	/// Sends one immediate email with the newest jobs already matching this filter, capped the
+	/// same as a daily digest, so a new subscriber sees the alert work today rather than waiting
+	/// for the next new posting. Fully independent of the subscription's own cadence: an Instant
+	/// alert still gets one combined welcome email, never one per already-existing match.
+	///
+	/// Deliberately a one-time top-N rather than a full backlog dump: jobs beyond the cap are
+	/// simply never sent, matching the render-cap behaviour of a normal digest overflow. They are
+	/// also unreachable later, because the reverse-match path only considers jobs whose
+	/// FirstSeenAt is at or after MatchFromAt, and every backlog job here is older than that.
+	/// </summary>
+	private async Task EnqueueWelcomeBatchAsync(
+		AlertSubscriberEntity subscriber,
+		AlertSubscriptionEntity subscription,
+		DateTimeOffset now,
+		CancellationToken ct)
+	{
+		var cap = subscriber.Channel == AlertChannelKind.Sms
+			? _options.Sms.MaxDigestItems
+			: _options.Email.MaxDigestItems;
+
+		var (jobs, totalCount) = await repo.GetWelcomeBatchAsync(AlertCriteria.From(subscription), cap, ct);
+		if (jobs.Count == 0)
+			return;
+
+		var manageToken = AlertTokens.DeriveManageToken(subscriber.Id, _options.TokenSecret);
+
+		var rendered = renderers.Get(subscriber.Channel).RenderDigest(new AlertDigestModel(
+			subscription.Name,
+			[.. jobs.Select(AlertJobModel.FromEntity)],
+			totalCount,
+			links.Manage(manageToken),
+			links.Unsubscribe(manageToken)));
+
+		var messageId = Guid.CreateVersion7();
+
+		repo.AddMessage(new AlertMessageEntity
+		{
+			Id = messageId,
+			SubscriberId = subscriber.Id,
+			SubscriptionId = subscription.Id,
+			Kind = AlertMessageKind.WelcomeBatch,
+			Channel = subscriber.Channel,
+			Address = subscriber.Address,
+			// One welcome batch per subscription, ever, however many times a lost confirmation
+			// link gets replayed.
+			IdempotencyKey = $"welcome:{subscription.Id}",
+			Status = AlertMessageStatus.Pending,
+			Subject = rendered.Subject,
+			BodyText = rendered.BodyText,
+			BodyHtml = rendered.BodyHtml,
+			AvailableAt = now,
+			CreatedAt = now
+		});
+
+		foreach (var job in jobs)
+		{
+			repo.AddDelivery(new AlertDeliveryEntity
+			{
+				SubscriptionId = subscription.Id,
+				JobId = job.Id,
+				MatchedAt = now,
+				Status = AlertDeliveryStatus.Queued,
+				MessageId = messageId
+			});
+		}
+
+		logger.LogInformation(
+			"Queued welcome batch for subscription {SubscriptionId} with {JobCount} of {TotalCount} matching job(s)",
+			subscription.Id,
+			jobs.Count,
+			totalCount);
 	}
 
 	private static string[]? ToArray(IReadOnlyList<string>? values) => values?.ToArray();

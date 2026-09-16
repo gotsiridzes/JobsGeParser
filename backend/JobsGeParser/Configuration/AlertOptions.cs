@@ -73,6 +73,13 @@ public class AlertOptions
 	public int MaxConsecutiveFailures { get; set; } = 3;
 
 	/// <summary>
+	/// Send an immediate one-time batch of currently matching jobs right after confirmation, so a
+	/// new subscriber sees the alert work today instead of waiting for the next new posting.
+	/// Capped by the same per-channel digest item limits as a daily digest.
+	/// </summary>
+	public bool WelcomeBatchEnabled { get; set; } = true;
+
+	/// <summary>
 	/// Consecutive transient failures on one channel before it is paused.
 	/// </summary>
 	public int ChannelFailureThreshold { get; set; } = 5;

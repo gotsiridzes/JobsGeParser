@@ -1,3 +1,6 @@
+using JobsGeParser.Alerts;
+using JobsGeParser.Data;
+
 namespace JobsGeParser.Alerts.Rendering;
 
 /// <summary>
@@ -14,7 +17,32 @@ public sealed record AlertJobModel(
 	string? Seniority,
 	decimal? SalaryMin,
 	decimal? SalaryMax,
-	string? SalaryCurrency);
+	string? SalaryCurrency)
+{
+	public static AlertJobModel FromEntity(JobEntity job) => new(
+		job.Id,
+		job.Name,
+		job.Company,
+		job.Link,
+		job.City,
+		job.WorkMode,
+		job.Seniority,
+		job.SalaryMin,
+		job.SalaryMax,
+		job.SalaryCurrency);
+
+	public static AlertJobModel FromSnapshot(JobSnapshot job) => new(
+		job.Id,
+		job.Name,
+		job.Company,
+		job.Link,
+		job.City,
+		job.WorkMode,
+		job.Seniority,
+		job.SalaryMin,
+		job.SalaryMax,
+		job.SalaryCurrency);
+}
 
 public sealed record AlertConfirmationModel(
 	string ConfirmUrl,
