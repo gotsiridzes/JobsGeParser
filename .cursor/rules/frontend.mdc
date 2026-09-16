@@ -6,11 +6,14 @@ globs: frontend/**/*
 # Frontend
 
 - Vite + React + TypeScript in `frontend/`
-- Two layouts: `PublicLayout` (seeker: `/`, `/search`, `/jobs/:id`) and `OpsLayout` (`/ops/*`)
+- Two layouts: `PublicLayout` (seeker: `/`, `/search`, `/jobs/:id`, `/alerts/new`, and the email link pages `/a/c/:token`, `/a/:token`, `/a/u/:token`) and `OpsLayout` (`/ops/*`)
 - Pages: `frontend/src/pages/public/` and `frontend/src/pages/ops/`
 - API client in `frontend/src/api/` - types mirror backend DTOs; `useSearch` → `GET /api/search`
 - TanStack Query for data fetching; poll scrape overview 5s when active, 30s otherwise
 - Dev proxy: `/api` → `http://localhost:50423` in `frontend/vite.config.ts`
 - Shared components in `frontend/src/components/`
-- Do not add write endpoints or auth in v1 - UI is read-only against existing API (except ops enrichment backfill is API-only)
+- Read-only against the API except alert subscription endpoints (`/api/alerts/*`). No auth; alert management uses capability tokens sent in the `X-Alert-Token` header, never in query strings or browser storage
+- Alert UI is hidden when `GET /api/alerts/criteria-options` fails (`useAlertsAvailable`), because the backend only registers alert endpoints when `Alerts:Enabled` is true
+- `/a/*` pages call `useNoReferrer()` so the token in the path never leaks through a Referer header
+- Confirmation tokens are single use: guard the confirm call against StrictMode's double effect
 - After changes: `npm run build` is sufficient. Do not start `npm run dev` unless the user asks.
