@@ -1,3 +1,4 @@
+using JobsGeParser.Alerts;
 using JobsGeParser.Data;
 using JobsGeParser.Enrichment;
 using JobsGeParser.Scraping;
@@ -54,6 +55,8 @@ public static class DependencyInjection
 			.AddScoped<Repo>();
 
 		self.AddHostedService<JobScrapeWorker>();
+
+		self.AddAlertServices(configuration);
 
 		var corsOrigins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
 		if (corsOrigins.Length > 0)

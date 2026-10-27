@@ -41,6 +41,18 @@ Open [http://localhost:5173](http://localhost:5173). API requests to `/api/*` ar
 | `/` | Search-first home, category chips, latest jobs |
 | `/search` | Ranked FTS results (`?q`) or category browse (`?category`) |
 | `/jobs/:id` | Public job detail with structured chips and jobs.ge link |
+| `/alerts/new` | Job alert builder with live match preview (`?q`, `?category` prefill it) |
+| `/a/c/:token` | Confirmation link target from the confirmation email |
+| `/a/:token` | Manage alerts: pause, resume, edit, delete, unsubscribe all |
+| `/a/u/:token` | Unsubscribe page (asks before acting) |
+
+### Alerts
+
+Users save a filter against an email address and get notified about new matching jobs. There are no accounts: the links in each email carry a capability token, which the app sends in an `X-Alert-Token` header and never stores. The whole feature is hidden when the backend runs with `Alerts:Enabled=false`.
+
+With the backend on its default console channel, the confirmation link is printed to the API log instead of being emailed. Open it on `http://localhost:5173/a/c/<token>`.
+
+Entry points are the "Alert me about new jobs like these" button on `/search` and `/alerts/new` directly.
 
 ### Ops
 

@@ -10,26 +10,87 @@ import type {
   SearchPage,
   SearchQueryParams,
 } from './types'
+import type {
+  AlertCriteria,
+  AlertCriteriaOptions,
+  AlertSubscriptionsResponse,
+  ConfirmAlertResponse,
+  CreateAlertRequest,
+  CreateAlertResponse,
+  OpsAlertSubscription,
+  OpsAlertSubscriptionsPage,
+  OpsAlertsQueryParams,
+  UpdateAlertRequest,
+} from './alertTypes'
 
 class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    /** Field-level messages from the backend, when it sent any. */
+    public errors: string[] = [],
   ) {
     super(message)
     this.name = 'ApiError'
   }
 }
 
-async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url)
-  if (!response.ok) {
-    throw new ApiError(
-      response.status === 404 ? 'Not found' : `Request failed (${response.status})`,
-      response.status,
-    )
+/** Header that carries an alert capability token. Never put the token in a query string. */
+export const ALERT_TOKEN_HEADER = 'X-Alert-Token'
+
+interface RequestOptions {
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
+  body?: unknown
+  token?: string
+}
+
+async function readErrorBody(response: Response): Promise<{ message?: string; errors: string[] }> {
+  try {
+    const body = (await response.json()) as { error?: string; errors?: string[] }
+    return { message: body.error, errors: Array.isArray(body.errors) ? body.errors : [] }
+  } catch {
+    return { errors: [] }
   }
-  return response.json() as Promise<T>
+}
+
+function defaultMessage(status: number): string {
+  switch (status) {
+    case 404:
+      return 'Not found'
+    case 409:
+      return 'That conflicts with something you already have'
+    case 429:
+      return 'Too many requests, try again later'
+    case 503:
+      return 'This is temporarily unavailable, try again later'
+    default:
+      return `Request failed (${status})`
+  }
+}
+
+async function requestJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  if (options.body !== undefined) headers['Content-Type'] = 'application/json'
+  if (options.token) headers[ALERT_TOKEN_HEADER] = options.token
+
+  const response = await fetch(url, {
+    method: options.method ?? 'GET',
+    headers,
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+  })
+
+  if (!response.ok) {
+    const { message, errors } = await readErrorBody(response)
+    throw new ApiError(errors[0] ?? message ?? defaultMessage(response.status), response.status, errors)
+  }
+
+  // 202 and 204 carry no body worth parsing.
+  const text = await response.text()
+  return (text ? JSON.parse(text) : undefined) as T
+}
+
+function fetchJson<T>(url: string): Promise<T> {
+  return requestJson<T>(url)
 }
 
 function buildQuery(params: Record<string, string | number | undefined>): string {
@@ -87,6 +148,77 @@ export const api = {
         pageSize: params.pageSize,
       })}`,
     ),
+
+  alerts: {
+    criteriaOptions: () => fetchJson<AlertCriteriaOptions>('/api/alerts/criteria-options'),
+
+    preview: (criteria: AlertCriteria, page = 1, pageSize = 5) =>
+      requestJson<JobsPage>('/api/alerts/preview', {
+        method: 'POST',
+        body: { criteria, page, pageSize },
+      }),
+
+    subscribe: (request: CreateAlertRequest) =>
+      requestJson<CreateAlertResponse>('/api/alerts/subscriptions', { method: 'POST', body: request }),
+
+    confirm: (token: string) =>
+      requestJson<ConfirmAlertResponse>('/api/alerts/confirm', { method: 'POST', body: { token } }),
+
+    list: (token: string) =>
+      requestJson<AlertSubscriptionsResponse>('/api/alerts/subscriptions', { token }),
+
+    update: (token: string, id: string, patch: UpdateAlertRequest) =>
+      requestJson<void>(`/api/alerts/subscriptions/${id}`, { method: 'PATCH', body: patch, token }),
+
+    pause: (token: string, id: string) =>
+      requestJson<void>(`/api/alerts/subscriptions/${id}/pause`, { method: 'POST', token }),
+
+    resume: (token: string, id: string) =>
+      requestJson<void>(`/api/alerts/subscriptions/${id}/resume`, { method: 'POST', token }),
+
+    remove: (token: string, id: string) =>
+      requestJson<void>(`/api/alerts/subscriptions/${id}`, { method: 'DELETE', token }),
+
+    unsubscribe: (token: string, subscriptionId?: string) =>
+      requestJson<void>('/api/alerts/unsubscribe', {
+        method: 'POST',
+        body: { token, subscriptionId: subscriptionId ?? null },
+      }),
+  },
+
+  // Ops console: no capability token, trusted like every other /api/jobs/scrape/* route.
+  opsAlerts: {
+    list: (params: OpsAlertsQueryParams = {}) =>
+      fetchJson<OpsAlertSubscriptionsPage>(
+        `/api/alerts/ops/subscriptions${buildQuery({
+          status: params.status,
+          cadence: params.cadence,
+          channel: params.channel,
+          q: params.q,
+          page: params.page,
+          pageSize: params.pageSize,
+        })}`,
+      ),
+
+    get: (id: string) =>
+      fetchJson<OpsAlertSubscription>(`/api/alerts/ops/subscriptions/${id}`),
+
+    update: (id: string, patch: UpdateAlertRequest) =>
+      requestJson<void>(`/api/alerts/ops/subscriptions/${id}`, { method: 'PATCH', body: patch }),
+
+    pause: (id: string) =>
+      requestJson<void>(`/api/alerts/ops/subscriptions/${id}/pause`, { method: 'POST' }),
+
+    resume: (id: string) =>
+      requestJson<void>(`/api/alerts/ops/subscriptions/${id}/resume`, { method: 'POST' }),
+
+    remove: (id: string) =>
+      requestJson<void>(`/api/alerts/ops/subscriptions/${id}`, { method: 'DELETE' }),
+  },
 }
 
 export { ApiError }
+
+export function isNotFound(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404
+}

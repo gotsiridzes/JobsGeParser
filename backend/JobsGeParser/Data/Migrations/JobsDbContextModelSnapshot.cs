@@ -23,6 +23,344 @@ namespace JobsGeParser.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("JobsGeParser.Data.AlertDeliveryEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("JobId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("MatchedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SkipReason")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("SubscriptionId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobId");
+
+                    b.HasIndex("MessageId");
+
+                    b.HasIndex("SubscriptionId", "JobId")
+                        .IsUnique();
+
+                    b.HasIndex("SubscriptionId", "MatchedAt")
+                        .HasFilter("\"MessageId\" IS NULL AND \"Status\" = 'Pending'");
+
+                    b.ToTable("alert_deliveries", (string)null);
+                });
+
+            modelBuilder.Entity("JobsGeParser.Data.AlertMessageEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Address")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("AvailableAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("BodyHtml")
+                        .HasColumnType("text");
+
+                    b.Property<string>("BodyText")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTimeOffset?>("ClaimedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ProviderMessageId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset?>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Subject")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<Guid>("SubscriberId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("SubscriptionId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("SubscriptionId");
+
+                    b.HasIndex("AvailableAt", "Id")
+                        .HasFilter("\"Status\" IN ('Pending', 'Claimed')");
+
+                    b.HasIndex("SubscriberId", "CreatedAt")
+                        .IsDescending(false, true);
+
+                    b.ToTable("alert_messages", (string)null);
+                });
+
+            modelBuilder.Entity("JobsGeParser.Data.AlertSubscriberEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Address")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTimeOffset?>("ConfirmationExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ConfirmationSendCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("ConfirmationSentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("ConfirmationTokenHash")
+                        .HasColumnType("bytea");
+
+                    b.Property<DateTimeOffset?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ConsecutiveFailures")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Locale")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<byte[]>("ManageTokenHash")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTimeOffset?>("SuppressedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SuppressionReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("TimeZoneId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset?>("UnsubscribedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConfirmationTokenHash")
+                        .IsUnique()
+                        .HasFilter("\"ConfirmationTokenHash\" IS NOT NULL");
+
+                    b.HasIndex("ManageTokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("Channel", "Address")
+                        .IsUnique();
+
+                    b.ToTable("alert_subscribers", (string)null);
+                });
+
+            modelBuilder.Entity("JobsGeParser.Data.AlertSubscriptionEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Cadence")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.PrimitiveCollection<string[]>("CategorySlugs")
+                        .HasColumnType("text[]");
+
+                    b.PrimitiveCollection<string[]>("Cities")
+                        .HasColumnType("text[]");
+
+                    b.Property<string>("CompanyContains")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("CriteriaHash")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("DescriptionContains")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<TimeOnly>("DigestSendLocalTime")
+                        .HasColumnType("time without time zone");
+
+                    b.PrimitiveCollection<string[]>("EmploymentTypes")
+                        .HasColumnType("text[]");
+
+                    b.PrimitiveCollection<string[]>("Languages")
+                        .HasColumnType("text[]");
+
+                    b.Property<DateOnly?>("LastDigestSentOn")
+                        .HasColumnType("date");
+
+                    b.Property<DateTimeOffset>("MatchFromAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Query")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<bool>("RequireSalary")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("SalaryCurrency")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<decimal?>("SalaryMax")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("SalaryMin")
+                        .HasColumnType("numeric");
+
+                    b.PrimitiveCollection<string[]>("Seniorities")
+                        .HasColumnType("text[]");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("SubscriberId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TitleContains")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.PrimitiveCollection<string[]>("WorkModes")
+                        .HasColumnType("text[]");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CategorySlugs");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("CategorySlugs"), "GIN");
+
+                    b.HasIndex("Cities");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Cities"), "GIN");
+
+                    b.HasIndex("DigestSendLocalTime")
+                        .HasFilter("\"Status\" = 'Active' AND \"Cadence\" = 'DailyDigest'");
+
+                    b.HasIndex("EmploymentTypes");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("EmploymentTypes"), "GIN");
+
+                    b.HasIndex("Languages");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Languages"), "GIN");
+
+                    b.HasIndex("Seniorities");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Seniorities"), "GIN");
+
+                    b.HasIndex("SubscriberId");
+
+                    b.HasIndex("WorkModes");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("WorkModes"), "GIN");
+
+                    b.HasIndex("SubscriberId", "CriteriaHash")
+                        .IsUnique()
+                        .HasFilter("\"Status\" <> 'Deleted'");
+
+                    b.ToTable("alert_subscriptions", (string)null);
+                });
+
             modelBuilder.Entity("JobsGeParser.Data.CategoryEntity", b =>
                 {
                     b.Property<string>("Slug")
@@ -185,6 +523,54 @@ namespace JobsGeParser.Data.Migrations
                     b.ToTable("jobs", (string)null);
                 });
 
+            modelBuilder.Entity("JobsGeParser.Data.JobEventEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("AvailableAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CategorySlug")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset?>("ClaimedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<int>("JobId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("ProcessedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobId");
+
+                    b.HasIndex("AvailableAt", "Id")
+                        .HasFilter("\"ProcessedAt\" IS NULL");
+
+                    b.ToTable("job_events", (string)null);
+                });
+
             modelBuilder.Entity("JobsGeParser.Data.ScrapeRunEntity", b =>
                 {
                     b.Property<long>("Id")
@@ -262,6 +648,61 @@ namespace JobsGeParser.Data.Migrations
                     b.ToTable("scrape_runs", (string)null);
                 });
 
+            modelBuilder.Entity("JobsGeParser.Data.AlertDeliveryEntity", b =>
+                {
+                    b.HasOne("JobsGeParser.Data.JobEntity", "Job")
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("JobsGeParser.Data.AlertMessageEntity", "Message")
+                        .WithMany("Deliveries")
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("JobsGeParser.Data.AlertSubscriptionEntity", "Subscription")
+                        .WithMany()
+                        .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Job");
+
+                    b.Navigation("Message");
+
+                    b.Navigation("Subscription");
+                });
+
+            modelBuilder.Entity("JobsGeParser.Data.AlertMessageEntity", b =>
+                {
+                    b.HasOne("JobsGeParser.Data.AlertSubscriberEntity", "Subscriber")
+                        .WithMany()
+                        .HasForeignKey("SubscriberId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("JobsGeParser.Data.AlertSubscriptionEntity", "Subscription")
+                        .WithMany()
+                        .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Subscriber");
+
+                    b.Navigation("Subscription");
+                });
+
+            modelBuilder.Entity("JobsGeParser.Data.AlertSubscriptionEntity", b =>
+                {
+                    b.HasOne("JobsGeParser.Data.AlertSubscriberEntity", "Subscriber")
+                        .WithMany("Subscriptions")
+                        .HasForeignKey("SubscriberId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Subscriber");
+                });
+
             modelBuilder.Entity("JobsGeParser.Data.JobCategoryEntity", b =>
                 {
                     b.HasOne("JobsGeParser.Data.CategoryEntity", "Category")
@@ -281,6 +722,17 @@ namespace JobsGeParser.Data.Migrations
                     b.Navigation("Job");
                 });
 
+            modelBuilder.Entity("JobsGeParser.Data.JobEventEntity", b =>
+                {
+                    b.HasOne("JobsGeParser.Data.JobEntity", "Job")
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Job");
+                });
+
             modelBuilder.Entity("JobsGeParser.Data.ScrapeRunEntity", b =>
                 {
                     b.HasOne("JobsGeParser.Data.CategoryEntity", "Category")
@@ -289,6 +741,16 @@ namespace JobsGeParser.Data.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("JobsGeParser.Data.AlertMessageEntity", b =>
+                {
+                    b.Navigation("Deliveries");
+                });
+
+            modelBuilder.Entity("JobsGeParser.Data.AlertSubscriberEntity", b =>
+                {
+                    b.Navigation("Subscriptions");
                 });
 
             modelBuilder.Entity("JobsGeParser.Data.CategoryEntity", b =>
